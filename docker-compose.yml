@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  user_db:
+    env_file:
+      - .env
+    image: postgres:17.5
+    container_name: user_db
+    environment:
+      POSTGRES_HOST: ${DATABASE_HOST}
+      POSTGRES_USER: ${DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    ports:
+      - "${DATABASE_PORT}:5432"
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  user_db_data:
+    driver: local

@@ -63,3 +63,7 @@ pnpm-lock.yaml
 !.env.example
 nest-cli.json
 .vscode/
+
+
+# Ignore dev setup files
+docker-compose.dev.yml

@@ -39,3 +39,22 @@ export const jwtConfig = registerAs('jwt_env', (): JwtConfig => {
         jwtRefreshTokenExpiresIn: configService.get<string>('JWT_REFRESH_TOKEN_EXPIRES_IN', '7d'),
     };
 });
+
+export interface RabbitMQConfig {
+    urls: string[];
+    queue: string;
+    queueOptions: {
+        durable: boolean;
+    };
+}
+
+export const rabbitMQConfig = registerAs('rabbitmq_env', (): RabbitMQConfig => {
+    const configService = new ConfigService();
+    return {
+        urls: configService.get<string>('RABBITMQ_URLS')?.split(',') || ['amqp://localhost'],
+        queue: configService.get<string>('RABBITMQ_QUEUE_NAME') || 'default_queue',
+        queueOptions: {
+            durable: configService.get<boolean>('RABBITMQ_QUEUE_DURABLE', false),
+        },
+    };
+});

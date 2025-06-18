@@ -7,7 +7,7 @@ import { CachingModule } from './caching/caching.module';
 import { cacheConfig, databaseConfig, jwtConfig, rabbitMQConfig } from './configs/configuration.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { RmqModule } from './modules/rmq/rmq.module';
+import { RmqModule } from './rmq/rmq.module';
 import { UserModule } from './modules/user/user.module';
 
 @Module({

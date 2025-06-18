@@ -15,10 +15,12 @@ export class UserService {
 
     public async createUser(payload: CreateUserDto): Promise<UserEntity> {
         try {
+            const { authId, ...rest } = payload;
             const userEntity = this.userRepository.create({
                 auth: {
-                    authId: payload.authId as UUID,
+                    authId: authId as UUID,
                 },
+                ...rest,
             });
             return await this.userRepository.saveUser(userEntity);
         } catch (error) {
@@ -29,10 +31,12 @@ export class UserService {
 
     public async createUserWithTransaction(payload: CreateUserDto, queryRunner: QueryRunner): Promise<UserEntity> {
         try {
-            const userEntity = this.userRepository.create({
+            const { authId, ...rest } = payload;
+            const userEntity = this.userRepository.createUserWithValidation({
                 auth: {
-                    authId: payload.authId as UUID,
+                    authId: authId as UUID,
                 },
+                ...rest,
             });
             const newUser = await queryRunner.manager.save(userEntity);
             return newUser;

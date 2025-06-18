@@ -1,6 +1,6 @@
 import { USER_MESSAGES } from '@src/constants';
 import { UserEntity } from '@src/database/entities';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -32,5 +32,23 @@ export class UserRepository extends Repository<UserEntity> {
         }
 
         return await this.repository.save(payload);
+    }
+
+    async createUserWithValidation(payload: DeepPartial<UserEntity>): Promise<UserEntity> {
+        if (payload.phone) {
+            const isExistedPhoneNumber = await this.existPhoneNumber(payload.phone);
+            if (isExistedPhoneNumber) {
+                throw new BadRequestException(USER_MESSAGES.ERROR.PHONE_NUMBER_EXISTS);
+            }
+        }
+
+        if (payload.identityNumber) {
+            const isExistedIdentityNumber = await this.existIdentityNumber(payload.identityNumber);
+            if (isExistedIdentityNumber) {
+                throw new BadRequestException(USER_MESSAGES.ERROR.IDENTITY_NUMBER_EXISTS);
+            }
+        }
+
+        return this.repository.create(payload);
     }
 }

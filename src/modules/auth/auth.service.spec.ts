@@ -1,32 +1,34 @@
+import { DataSource } from 'typeorm';
+
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { AuthService } from './services/auth.service';
-import { AuthRepository } from './repositories';
 import { UserService } from '../user/user.service';
+import { AuthRepository } from './repositories';
 import { JwtService } from './services';
-import { DataSource } from 'typeorm';
+import { AuthService } from './services/auth.service';
 
 describe('AuthService', () => {
     let service: AuthService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [AuthService, 
+            providers: [
+                AuthService,
                 {
                     provide: AuthRepository,
-                    useValue: {}
+                    useValue: {},
                 },
                 {
                     provide: UserService,
-                    useValue: {}
+                    useValue: {},
                 },
                 {
                     provide: JwtService,
-                    useValue: {}
+                    useValue: {},
                 },
                 {
                     provide: DataSource,
-                    useValue: {}
+                    useValue: {},
                 },
             ],
         }).compile();

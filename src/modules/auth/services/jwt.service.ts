@@ -1,5 +1,6 @@
 import { JwtConfig, jwtConfig } from '@configs/configuration.config';
 import { ErrorHelper } from '@helpers/error.helper';
+import { CachingJwtService } from '@src/caching/services';
 import { JWT_MESSAGES } from '@src/constants/messages/jwt.messages';
 import { JWTEntity } from '@src/database/entities';
 import { randomUUID } from 'crypto';
@@ -17,7 +18,10 @@ export class JwtService extends BaseJwtService {
     private readonly myLogger = new Logger(JwtService.name);
     private readonly jwtConfig: JwtConfig = jwtConfig();
 
-    constructor(@Inject() private readonly jwtRepository: JwtRepository) {
+    constructor(
+        @Inject() private readonly jwtRepository: JwtRepository,
+        @Inject() private readonly cachingJwtService: CachingJwtService,
+    ) {
         super();
     }
 
@@ -63,14 +67,22 @@ export class JwtService extends BaseJwtService {
             const accessToken = await this.generateAccessToken(payload);
             const refreshToken = await this.generateRefreshToken(payload);
 
+            // Store the refresh token in the cache and database
+            const promiseActions: Promise<any>[] = [];
+            // Cache the refresh token for quick access
+            promiseActions.push(this.cachingJwtService.set(payload.sub, refreshToken.jwtId as string));
             // Save the refresh token to the database
-            await this.jwtRepository.save({
-                jwtId: refreshToken.jwtId,
-                auth: {
-                    authId: payload.sub,
-                },
-                expiresAt: new Date(Date.now() + refreshToken.expiresIn),
-            } as JWTEntity);
+            promiseActions.push(
+                this.jwtRepository.save({
+                    jwtId: refreshToken.jwtId,
+                    auth: {
+                        authId: payload.sub,
+                    },
+                    expiresAt: new Date(Date.now() + refreshToken.expiresIn),
+                } as JWTEntity),
+            );
+
+            await Promise.all(promiseActions);
 
             return {
                 accessToken: tokenResponseToDtoMapper(accessToken),
@@ -82,26 +94,23 @@ export class JwtService extends BaseJwtService {
         }
     }
 
-    // public async validateAccessToken(token: string): Promise<JwtPayload> {
-    //     try {
-    //         return await this.verifyAsync(token, { secret: this.jwtConfig.secret });
-    //     } catch (error) {
-    //         this.myLogger.error('Error generating tokens:', error);
-    //         throw ErrorHelper.generateErrorService(error);
-    //     }
-    // }
-
-    // public async validateRefreshToken(token: string) {}
-
     async revokeRefreshToken(payload: JwtPayload): Promise<boolean> {
         try {
             if (!payload?.jwtId) {
                 throw new MethodNotAllowedException(JWT_MESSAGES.ERROR.NOT_ALLOWED);
             }
 
-            // Delete the refresh token from the database
-            const result = await this.jwtRepository.delete({ jwtId: payload.jwtId, auth: { authId: payload.sub } });
-            return !!result?.affected && result.affected > 0;
+            // Check if the refresh token exists in the cache
+            const isExisted = await this.cachingJwtService.delete(payload.sub, payload.jwtId as string);
+            if (isExisted) {
+                // If the token was found on the cache, delete it from the database
+                this.jwtRepository.delete({ jwtId: payload.jwtId, auth: { authId: payload.sub } });
+                return true;
+            }
+
+            // If the token was not found in the cache, try to delete it from the database
+            const dbResult = await this.jwtRepository.delete({ jwtId: payload.jwtId, auth: { authId: payload.sub } });
+            return !!dbResult?.affected && dbResult?.affected > 0;
         } catch (error) {
             this.myLogger.error('Error revoking refresh token:', error);
             throw ErrorHelper.generateErrorService(error);

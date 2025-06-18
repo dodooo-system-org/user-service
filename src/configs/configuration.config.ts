@@ -58,3 +58,22 @@ export const rabbitMQConfig = registerAs('rabbitmq_env', (): RabbitMQConfig => {
         },
     };
 });
+
+export interface CacheConfig {
+    host: string;
+    port: number;
+    username?: string; // Optional for Redis
+    password: string;
+    ttl: number; // Time to live in seconds
+}
+
+export const cacheConfig = registerAs('cache_env', (): CacheConfig => {
+    const configService = new ConfigService();
+    return {
+        host: configService.get<string>('REDIS_HOST', 'localhost'),
+        port: configService.get<number>('REDIS_PORT', 6379),
+        username: configService.get<string>('REDIS_USERNAME', ''), // Optional for Redis
+        password: configService.get<string>('REDIS_PASSWORD', ''),
+        ttl: configService.get<number>('REDIS_TTL', 3600), // Default TTL is 1 hour
+    };
+});

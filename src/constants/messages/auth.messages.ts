@@ -36,6 +36,8 @@ export const AUTH_MESSAGES = {
             'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
         USERNAME_REQUIRED: 'Username is required',
         USERNAME_MIN_LENGTH: 'Username must be at least 3 characters long',
+        USERNAME_MAX_LENGTH: 'Username must not exceed 32 characters',
+        USERNAME_INVALID: 'Username can only contain letters, numbers, and underscores',
         CONFIRM_PASSWORD_REQUIRED: 'Password confirmation is required',
         PASSWORDS_DONT_MATCH: 'Passwords do not match',
     },

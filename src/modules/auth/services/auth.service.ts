@@ -85,15 +85,20 @@ export class AuthService {
         }
     }
 
-    async createAuth({ email, password }: CreateAuthDto): Promise<{ message: string }> {
+    async createAuth({ email, password, username }: CreateAuthDto): Promise<{ message: string }> {
         const queryRunner = this.dataSource.createQueryRunner();
 
-        await queryRunner.connect();
-        await queryRunner.startTransaction();
         try {
+            await queryRunner.connect();
+            await queryRunner.startTransaction();
+
             const existEmail = await this.authRepository.existByEmail(email);
             if (existEmail) {
                 throw new BadRequestException(AUTH_MESSAGES.ERROR.EMAIL_ALREADY_EXISTS);
+            }
+            const existUsername = await this.authRepository.existByUsername(username);
+            if (existUsername) {
+                throw new BadRequestException(AUTH_MESSAGES.ERROR.USERNAME_ALREADY_EXISTS);
             }
 
             const hashedPassword = await AuthHelper.hashText(password);
@@ -101,6 +106,7 @@ export class AuthService {
             const authEntity = this.authRepository.create({
                 email,
                 password: hashedPassword,
+                username: username,
             });
 
             await queryRunner.manager.save(authEntity);

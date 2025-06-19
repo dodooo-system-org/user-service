@@ -1,17 +1,8 @@
-import { BadRequestException, Logger } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { UserRepository } from './repositories';
 import { UserService } from './user.service';
-
-// Mocking Logger methods to prevent actual logging during tests
-beforeAll(() => {
-    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
-    jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
-    jest.spyOn(Logger.prototype, 'verbose').mockImplementation(() => {});
-    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
-});
 
 describe('UserService', () => {
     let service: UserService;

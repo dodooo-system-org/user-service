@@ -5,6 +5,21 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateAuthDto {
     @ApiProperty({
+        name: 'username',
+        description: 'User unique username',
+        example: 'johndoe',
+        required: true,
+        type: String,
+        minLength: 3,
+        maxLength: 32,
+    })
+    @Matches(/^[a-zA-Z0-9_]+$/, { message: AUTH_MESSAGES.VALIDATION.USERNAME_INVALID })
+    @MinLength(3, { message: AUTH_MESSAGES.VALIDATION.USERNAME_MIN_LENGTH })
+    @MaxLength(32, { message: AUTH_MESSAGES.VALIDATION.USERNAME_MAX_LENGTH })
+    @IsNotEmpty({ message: AUTH_MESSAGES.VALIDATION.USERNAME_REQUIRED })
+    username: string;
+
+    @ApiProperty({
         name: 'email',
         description: 'User email address',
         example: 'johndoe@email.com',

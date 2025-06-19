@@ -17,6 +17,10 @@ export class AuthRepository extends Repository<AuthEntity> {
         return this.repository.existsBy({ email: email });
     }
 
+    existByUsername(username: string): Promise<boolean> {
+        return this.repository.existsBy({ username: username });
+    }
+
     async findOneByEmail(email: string): Promise<AuthEntity | null> {
         if (!email) {
             return null;

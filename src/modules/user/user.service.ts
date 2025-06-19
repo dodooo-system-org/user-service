@@ -32,7 +32,7 @@ export class UserService {
     public async createUserWithTransaction(payload: CreateUserDto, queryRunner: QueryRunner): Promise<UserEntity> {
         try {
             const { authId, ...rest } = payload;
-            const userEntity = this.userRepository.createUserWithValidation({
+            const userEntity = await this.userRepository.createUserWithValidation({
                 auth: {
                     authId: authId as UUID,
                 },

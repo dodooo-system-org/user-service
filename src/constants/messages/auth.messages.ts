@@ -10,21 +10,19 @@ export const AUTH_MESSAGES = {
 
     // Error messages
     ERROR: {
-        ACCOUNT_NOT_FOUND: 'Account not found',
         INVALID_CREDENTIALS: 'Invalid email or password',
         EMAIL_ALREADY_EXISTS: 'Email already exists',
         USERNAME_ALREADY_EXISTS: 'Username already exists',
         INVALID_TOKEN: 'Invalid or expired token',
         UNAUTHORIZED: 'Unauthorized access',
         FORBIDDEN: 'Access forbidden',
-        EMAIL_NOT_VERIFIED: 'Email not verified',
-        WEAK_PASSWORD: 'Password does not meet security requirements',
-        ACCOUNT_LOCKED: 'Account is temporarily locked',
         TOKEN_EXPIRED: 'Token has expired',
         REFRESH_TOKEN_INVALID: 'Invalid refresh token',
         ACCOUNT_REGISTRATION_FAILED: 'Account registration failed',
         LOGIN_FAILED: 'Login failed',
+        ACCOUNT_INACTIVE: 'Account is not verified',
         ACCOUNT_SUSPENDED: 'Your account has been suspended',
+        ACCOUNT_NOT_FOUND: 'Account not found',
     },
 
     // Validation messages

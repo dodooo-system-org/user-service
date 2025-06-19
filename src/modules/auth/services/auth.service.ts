@@ -35,6 +35,8 @@ export class AuthService {
             return new ForbiddenException(AUTH_MESSAGES.ERROR.ACCOUNT_SUSPENDED);
         } else if (auth?.status === AuthStatus.DELETED) {
             return new NotFoundException(AUTH_MESSAGES.ERROR.ACCOUNT_NOT_FOUND);
+        } else if (auth?.status === AuthStatus.INACTIVE) {
+            return new NotFoundException(AUTH_MESSAGES.ERROR.ACCOUNT_INACTIVE);
         } else {
             return null;
         }

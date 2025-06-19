@@ -3,13 +3,13 @@ import { AuthHelper } from '@src/helpers/auth.helper';
 import { UUID } from 'crypto';
 import { DataSource } from 'typeorm';
 
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { JwtService } from '.';
 import { UserService } from '../../user/user.service';
 import { AuthRepository } from '../repositories';
 import { AuthService } from './auth.service';
-import { BadRequestException } from '@nestjs/common';
 
 describe('AuthService', () => {
     let service: AuthService;
@@ -494,15 +494,15 @@ describe('AuthService', () => {
 
     describe('login', () => {
         const authEntity: AuthEntity = {
-                authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
-                email: 'johndoe@email.com',
-                username: 'johndoe',
-                password: 'hashedPassword',
-                status: AuthStatus.ACTIVE,
-                createdAt: new Date('2024-01-01T00:00:00Z'),
-                updatedAt: new Date('2024-01-01T00:00:00Z'),
-                lastLogin: null,
-            };
+            authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+            email: 'johndoe@email.com',
+            username: 'johndoe',
+            password: 'hashedPassword',
+            status: AuthStatus.ACTIVE,
+            createdAt: new Date('2024-01-01T00:00:00Z'),
+            updatedAt: new Date('2024-01-01T00:00:00Z'),
+            lastLogin: null,
+        };
         it('should return login response with tokens and mapped auth', async () => {
             const tokens = {
                 accessToken: { token: 'access-token', expiresIn: 3600 },
@@ -530,14 +530,14 @@ describe('AuthService', () => {
             const unexpectedError = new Error('Unexpected error');
             jwtService.generateTokens.mockRejectedValue(unexpectedError);
 
-            await expect(service.login(authEntity)).rejects.toMatchObject({message: 'Login failed'});
+            await expect(service.login(authEntity)).rejects.toMatchObject({ message: 'Login failed' });
             expect(jwtService.generateTokens).toHaveBeenCalledWith({ email: authEntity.email, sub: authEntity.authId });
-        })
+        });
         it('should throw specific error if controlled error occurs', async () => {
             const controlledError = new BadRequestException('Bad Request');
             jwtService.generateTokens.mockRejectedValue(controlledError);
 
-            await expect(service.login(authEntity)).rejects.toMatchObject({message: 'Bad Request'});
+            await expect(service.login(authEntity)).rejects.toMatchObject({ message: 'Bad Request' });
             expect(jwtService.generateTokens).toHaveBeenCalledWith({ email: authEntity.email, sub: authEntity.authId });
         });
     });
@@ -595,7 +595,9 @@ describe('AuthService', () => {
 
         it('should throw error if an unexpected error occurs', async () => {
             jwtService.revokeRefreshToken.mockRejectedValue(new Error('Unexpected error'));
-            await expect(service.refreshTokens(payload)).rejects.toMatchObject({ message: 'An unexpected error occurred' });
+            await expect(service.refreshTokens(payload)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
             expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
         });
     });

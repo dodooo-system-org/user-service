@@ -9,12 +9,14 @@ import { JwtService } from '.';
 import { UserService } from '../../user/user.service';
 import { AuthRepository } from '../repositories';
 import { AuthService } from './auth.service';
+import { BadRequestException } from '@nestjs/common';
 
 describe('AuthService', () => {
     let service: AuthService;
     let authRepository: any;
     let dataSource: any;
     let userService: any;
+    let jwtService: any;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -38,7 +40,10 @@ describe('AuthService', () => {
                 },
                 {
                     provide: JwtService,
-                    useValue: {},
+                    useValue: {
+                        generateTokens: jest.fn(),
+                        revokeRefreshToken: jest.fn(),
+                    },
                 },
                 {
                     provide: DataSource,
@@ -62,6 +67,7 @@ describe('AuthService', () => {
         authRepository = module.get<AuthRepository>(AuthRepository);
         dataSource = module.get<DataSource>(DataSource);
         userService = module.get<UserService>(UserService);
+        jwtService = module.get<JwtService>(JwtService);
 
         jest.clearAllMocks();
     });
@@ -483,6 +489,114 @@ describe('AuthService', () => {
             expect(authRepository.create).not.toHaveBeenCalled();
             expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
             expect(queryRunner.release).toHaveBeenCalled();
+        });
+    });
+
+    describe('login', () => {
+        const authEntity: AuthEntity = {
+                authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                email: 'johndoe@email.com',
+                username: 'johndoe',
+                password: 'hashedPassword',
+                status: AuthStatus.ACTIVE,
+                createdAt: new Date('2024-01-01T00:00:00Z'),
+                updatedAt: new Date('2024-01-01T00:00:00Z'),
+                lastLogin: null,
+            };
+        it('should return login response with tokens and mapped auth', async () => {
+            const tokens = {
+                accessToken: { token: 'access-token', expiresIn: 3600 },
+                refreshToken: { token: 'refresh-token', expiresIn: 7200 },
+            };
+
+            const expectedAuth = {
+                authId: authEntity.authId,
+                email: authEntity.email,
+                status: authEntity.status,
+                createdAt: authEntity.createdAt,
+                updatedAt: authEntity.updatedAt,
+                lastLogin: authEntity.lastLogin,
+                username: authEntity.username,
+            };
+
+            jwtService.generateTokens.mockResolvedValue(tokens);
+
+            const result = await service.login(authEntity);
+
+            expect(jwtService.generateTokens).toHaveBeenCalledWith({ email: authEntity.email, sub: authEntity.authId });
+            expect(result).toEqual({ auth: expectedAuth, tokens });
+        });
+        it('should throw error if an unexpected error occurs', async () => {
+            const unexpectedError = new Error('Unexpected error');
+            jwtService.generateTokens.mockRejectedValue(unexpectedError);
+
+            await expect(service.login(authEntity)).rejects.toMatchObject({message: 'Login failed'});
+            expect(jwtService.generateTokens).toHaveBeenCalledWith({ email: authEntity.email, sub: authEntity.authId });
+        })
+        it('should throw specific error if controlled error occurs', async () => {
+            const controlledError = new BadRequestException('Bad Request');
+            jwtService.generateTokens.mockRejectedValue(controlledError);
+
+            await expect(service.login(authEntity)).rejects.toMatchObject({message: 'Bad Request'});
+            expect(jwtService.generateTokens).toHaveBeenCalledWith({ email: authEntity.email, sub: authEntity.authId });
+        });
+    });
+
+    describe('logout', () => {
+        const payload = { email: 'johndoe@email.com', sub: '123e4567-e89b-12d3-a456-426614174000' as UUID };
+
+        it('should return logout success message if token is revoked', async () => {
+            jwtService.revokeRefreshToken.mockResolvedValue(true);
+            const result = await service.logout(payload);
+            expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
+            expect(result).toEqual({ message: 'Logout successful' });
+        });
+
+        it('should throw BadRequestException if token is not revoked', async () => {
+            jwtService.revokeRefreshToken.mockResolvedValue(false);
+            await expect(service.logout(payload)).rejects.toMatchObject({ message: 'Access forbidden' });
+            expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
+        });
+
+        it('should throw error if an unexpected error occurs', async () => {
+            jwtService.revokeRefreshToken.mockRejectedValue(new Error('Unexpected error'));
+            await expect(service.logout(payload)).rejects.toMatchObject({ message: 'An unexpected error occurred' });
+            expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
+        });
+    });
+
+    describe('refreshTokens', () => {
+        const payload = {
+            email: 'johndoe@email.com',
+            sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+        };
+
+        it('should return new tokens if refresh token is revoked', async () => {
+            const tokens = {
+                accessToken: { token: 'access-token', expiresIn: 3600 },
+                refreshToken: { token: 'refresh-token', expiresIn: 7200 },
+            };
+            jwtService.revokeRefreshToken.mockResolvedValue(true);
+            jwtService.generateTokens.mockResolvedValue(tokens);
+
+            const result = await service.refreshTokens(payload);
+
+            expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
+            expect(jwtService.generateTokens).toHaveBeenCalledWith({ email: payload.email, sub: payload.sub });
+            expect(result).toEqual({ tokens });
+        });
+
+        it('should throw BadRequestException if refresh token is not revoked', async () => {
+            jwtService.revokeRefreshToken.mockResolvedValue(false);
+            await expect(service.refreshTokens(payload)).rejects.toMatchObject({ message: 'Invalid refresh token' });
+            expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
+            expect(jwtService.generateTokens).not.toHaveBeenCalled();
+        });
+
+        it('should throw error if an unexpected error occurs', async () => {
+            jwtService.revokeRefreshToken.mockRejectedValue(new Error('Unexpected error'));
+            await expect(service.refreshTokens(payload)).rejects.toMatchObject({ message: 'An unexpected error occurred' });
+            expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
         });
     });
 });

@@ -124,6 +124,7 @@ export class AuthService {
         }
     }
 
+    // Only used in local strategy
     async login(auth: AuthEntity): Promise<LoginResponseDto> {
         try {
             const tokens = await this.jwtService.generateTokens({ email: auth.email, sub: auth.authId });
@@ -142,7 +143,7 @@ export class AuthService {
         try {
             const isRevoked = await this.jwtService.revokeRefreshToken(payload);
             if (!isRevoked) {
-                throw new BadRequestException(AUTH_MESSAGES.ERROR.INVALID_CREDENTIALS);
+                throw new ForbiddenException(AUTH_MESSAGES.ERROR.FORBIDDEN);
             }
             return { message: AUTH_MESSAGES.SUCCESS.LOGOUT_SUCCESS };
         } catch (error) {

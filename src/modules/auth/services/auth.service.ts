@@ -1,7 +1,13 @@
 import { AuthEntity, AuthStatus } from '@database/entities';
 import { AuthHelper } from '@helpers/auth.helper';
 import { ErrorHelper } from '@helpers/error.helper';
+import { CachingAuthService } from '@src/caching/services/caching.auth.service';
+import { SecretKeyConfig } from '@src/configs/configuration.config';
 import { AUTH_MESSAGES } from '@src/constants';
+import { EncryptionHelper } from '@src/helpers/encryption.helper';
+import { MailerAuthService } from '@src/modules/mailer/services';
+import { isUUID } from 'class-validator';
+import { UUID } from 'crypto';
 import { DataSource } from 'typeorm';
 
 import {
@@ -12,6 +18,7 @@ import {
     Logger,
     NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { UserService } from '../../user/user.service';
 import { CreateAuthDto, JwtPayload, LoginBodyDto, LoginResponseDto } from '../dto';
@@ -22,13 +29,60 @@ import { JwtService } from './jwt.service';
 @Injectable()
 export class AuthService {
     private readonly logger = new Logger(AuthService.name);
+    private readonly verifiedTokenExpirationTimeMs = 1000 * 60 * 60; // 1 hour
+    private readonly secretKeyConfig: SecretKeyConfig;
 
     constructor(
         private readonly authRepository: AuthRepository,
         private readonly userService: UserService,
         private readonly jwtService: JwtService,
         private readonly dataSource: DataSource,
-    ) {}
+        private readonly mailerAuthService: MailerAuthService,
+        private readonly cachingAuthService: CachingAuthService,
+        private readonly configService: ConfigService,
+    ) {
+        this.secretKeyConfig = this.configService.get<SecretKeyConfig>('secretkey_env') as SecretKeyConfig;
+    }
+
+    private async createEmailVerificationToken(auth: Pick<AuthEntity, 'authId' | 'email' | 'username'>): Promise<void> {
+        try {
+            if (!auth) {
+                throw new BadRequestException(AUTH_MESSAGES.ERROR.EMAIL_VERIFICATION_FAILED);
+            }
+
+            const token = this.stringifyEmailVerificationToken(auth);
+            if (!token) {
+                throw new BadRequestException(AUTH_MESSAGES.ERROR.EMAIL_VERIFICATION_FAILED);
+            }
+            await this.mailerAuthService.sendEmailVerification(auth.email, auth.username, token);
+            await this.cachingAuthService.cachingResendEmailVerify(auth.authId, this.verifiedTokenExpirationTimeMs);
+        } catch (error) {
+            this.logger.error('Error creating email verification token:', error);
+            throw error;
+        }
+    }
+
+    private stringifyEmailVerificationToken(auth: Pick<AuthEntity, 'authId' | 'email' | 'username'>): string {
+        const expiredAt = Date.now() + this.verifiedTokenExpirationTimeMs;
+        const rawText = [auth.authId, auth.email, auth.username, expiredAt].join(';');
+        return EncryptionHelper.encode(rawText, 'aes-256-gcm', this.secretKeyConfig.emailVerificationSecret);
+    }
+
+    private parseEmailVerificationToken(token: string): string[] {
+        const decodedToken = EncryptionHelper.decode(
+            token,
+            'aes-256-gcm',
+            this.secretKeyConfig.emailVerificationSecret,
+        );
+        if (!decodedToken) {
+            throw new BadRequestException(AUTH_MESSAGES.ERROR.FORBIDDEN);
+        }
+        const parts = decodedToken.split(';');
+        if (parts.length !== 4 || !isUUID(parts[0])) {
+            throw new BadRequestException(AUTH_MESSAGES.ERROR.FORBIDDEN);
+        }
+        return parts;
+    }
 
     protected checkBlockedAuth(auth: AuthEntity): HttpException | null {
         if (auth?.status === AuthStatus.SUSPENDED) {
@@ -112,6 +166,9 @@ export class AuthService {
             await queryRunner.manager.save(authEntity);
             await this.userService.createUserWithTransaction({ authId: authEntity.authId }, queryRunner);
 
+            // Create email verification token after successful registration
+            await this.createEmailVerificationToken(authEntity);
+
             await queryRunner.commitTransaction();
 
             return { message: AUTH_MESSAGES.SUCCESS.REGISTRATION_SUCCESS };
@@ -167,6 +224,48 @@ export class AuthService {
             };
         } catch (error) {
             this.logger.error('Error refreshing tokens:', error);
+            throw ErrorHelper.generateErrorService(error);
+        }
+    }
+
+    async verifyEmail(token: string) {
+        try {
+            const [authId, email, username, expiredAt] = this.parseEmailVerificationToken(token);
+
+            if (Date.now() > Number(expiredAt)) {
+                throw new BadRequestException(AUTH_MESSAGES.ERROR.EMAIL_VERIFICATION_TOKEN_EXPIRED);
+            }
+            if (!authId || !email || !username || !isUUID(authId)) {
+                throw new ForbiddenException(AUTH_MESSAGES.ERROR.FORBIDDEN);
+            }
+            await this.authRepository.update({ authId: authId as UUID, email }, { status: AuthStatus.ACTIVE });
+            this.mailerAuthService.sendWelcomeEmail(email, username);
+            return { message: AUTH_MESSAGES.SUCCESS.EMAIL_VERIFIED };
+        } catch (error) {
+            this.logger.error('Error verifying email:', error);
+            throw ErrorHelper.generateErrorService(error);
+        }
+    }
+
+    async resendEmailVerification(token: string) {
+        try {
+            const [authId, email, _, expiredAt] = this.parseEmailVerificationToken(token);
+            if (Date.now() < Number(expiredAt)) {
+                throw new BadRequestException(AUTH_MESSAGES.ERROR.EMAIL_VERIFICATION_TOKEN_UNEXPIRED);
+            }
+            const auth = await this.authRepository.findOneBy({ authId: authId as UUID, email });
+            if (!auth) {
+                throw new NotFoundException(AUTH_MESSAGES.ERROR.ACCOUNT_NOT_FOUND);
+            }
+            const timeRemaining = await this.cachingAuthService.getTTLResendEmailVerify(auth.authId);
+            if (timeRemaining > 0) {
+                throw new BadRequestException(`Please wait for ${timeRemaining} seconds`);
+            }
+
+            await this.createEmailVerificationToken(auth);
+            return { message: AUTH_MESSAGES.SUCCESS.EMAIL_VERIFIED };
+        } catch (error) {
+            this.logger.error('Error resending email verification:', error);
             throw ErrorHelper.generateErrorService(error);
         }
     }

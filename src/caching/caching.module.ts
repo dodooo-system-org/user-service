@@ -4,10 +4,11 @@ import { Inject, Logger, Module, OnModuleInit } from '@nestjs/common';
 
 import { CACHE_PROVIDER, CacheProvider } from './providers';
 import { CachingJwtService } from './services';
+import { CachingAuthService } from './services/caching.auth.service';
 
 @Module({
-    providers: [CacheProvider, CachingJwtService],
-    exports: [CachingJwtService],
+    providers: [CacheProvider, CachingJwtService, CachingAuthService],
+    exports: [CachingJwtService, CachingAuthService],
 })
 export class CachingModule implements OnModuleInit {
     private readonly logger = new Logger(CachingModule.name);

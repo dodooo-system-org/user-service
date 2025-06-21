@@ -1,4 +1,4 @@
-import { JwtConfig, jwtConfig } from '@configs/configuration.config';
+import { JwtConfig } from '@configs/configuration.config';
 import { ErrorHelper } from '@helpers/error.helper';
 import { CachingJwtService } from '@src/caching/services';
 import { JWT_MESSAGES } from '@src/constants/messages/jwt.messages';
@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import * as ms from 'ms';
 
 import { Inject, Injectable, Logger, MethodNotAllowedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService as BaseJwtService } from '@nestjs/jwt';
 
 import { JwtPayload, TokenResponse } from '../dto';
@@ -16,13 +17,14 @@ import { JwtRepository } from '../repositories';
 @Injectable()
 export class JwtService extends BaseJwtService {
     private readonly myLogger = new Logger(JwtService.name);
-    private readonly jwtConfig: JwtConfig = jwtConfig();
-
+    private readonly jwtConfig: JwtConfig;
     constructor(
         @Inject() private readonly jwtRepository: JwtRepository,
         @Inject() private readonly cachingJwtService: CachingJwtService,
+        @Inject() private readonly configService: ConfigService,
     ) {
         super();
+        this.jwtConfig = this.configService.get<JwtConfig>('jwt_env') as JwtConfig;
     }
 
     private async generateAccessToken(payload: JwtPayload): Promise<TokenResponse> {

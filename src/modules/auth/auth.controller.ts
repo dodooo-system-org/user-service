@@ -76,4 +76,40 @@ export class AuthController {
         });
         return response;
     }
+
+    @ApiOperation({
+        summary: 'Verify user email',
+        description: "Verifies a user's email address using the provided verification token.",
+    })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                token: { type: 'string', description: 'Email verification token' },
+            },
+            required: ['token'],
+        },
+    })
+    @Post('verify-email')
+    verifyEmail(@Body('token') token: string) {
+        return this.authService.verifyEmail(token);
+    }
+
+    @ApiOperation({
+        summary: 'Resend email verification',
+        description: 'Resends the email verification link to the user using the provided token.',
+    })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                token: { type: 'string', description: 'User token to identify the account' },
+            },
+            required: ['token'],
+        },
+    })
+    @Post('resend-email-verify')
+    resendEmailVerify(@Body('token') token: string) {
+        return this.authService.resendEmailVerification(token);
+    }
 }

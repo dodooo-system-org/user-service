@@ -1,6 +1,7 @@
 import { CachingJwtService } from '@src/caching/services';
 import { UUID } from 'crypto';
 
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { JwtRepository } from '../repositories';
@@ -15,6 +16,21 @@ describe('JwtService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 JwtService,
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: jest.fn().mockImplementation((key: string) => {
+                            if (key === 'jwt_env') {
+                                return {
+                                    secret: 'test_jwt_secret',
+                                    jwtAccessTokenExpiresIn: '1h',
+                                    jwtRefreshTokenExpiresIn: '7d',
+                                };
+                            }
+                            return undefined;
+                        }),
+                    },
+                },
                 {
                     provide: JwtRepository,
                     useValue: {

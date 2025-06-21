@@ -1,9 +1,14 @@
-import { AuthEntity, AuthStatus, UserEntity } from '@src/database/entities';
+import { CachingAuthService } from '@src/caching/services/caching.auth.service';
+import { SecretKeyConfig } from '@src/configs/configuration.config';
+import { AuthEntity, AuthStatus } from '@src/database/entities';
 import { AuthHelper } from '@src/helpers/auth.helper';
+import { EncryptionHelper } from '@src/helpers/encryption.helper';
+import { MailerAuthService } from '@src/modules/mailer/services';
 import { UUID } from 'crypto';
 import { DataSource } from 'typeorm';
 
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { JwtService } from '.';
@@ -17,11 +22,28 @@ describe('AuthService', () => {
     let dataSource: any;
     let userService: any;
     let jwtService: any;
+    let mailerAuthService: any;
+    let secretKeyConfig: any;
+    let cachingAuthService: any;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 AuthService,
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: jest.fn().mockImplementation((key: string) => {
+                            const configMap = {
+                                secretkey_env: {
+                                    emailVerificationSecret: 'PzaxFKPYKSNeeb1DDA9X5IHzTCK73GIe',
+                                    passwordResetSecret: 'test_password_reset_secret',
+                                },
+                            };
+                            return configMap[key];
+                        }),
+                    },
+                },
                 {
                     provide: AuthRepository,
                     useValue: {
@@ -30,6 +52,7 @@ describe('AuthService', () => {
                         existByEmail: jest.fn(),
                         existByUsername: jest.fn(),
                         create: jest.fn(),
+                        update: jest.fn(),
                     },
                 },
                 {
@@ -60,6 +83,20 @@ describe('AuthService', () => {
                         }),
                     },
                 },
+                {
+                    provide: MailerAuthService,
+                    useValue: {
+                        sendEmailVerification: jest.fn(),
+                        sendWelcomeEmail: jest.fn(),
+                    },
+                },
+                {
+                    provide: CachingAuthService,
+                    useValue: {
+                        cachingResendEmailVerify: jest.fn(),
+                        getTTLResendEmailVerify: jest.fn(),
+                    },
+                },
             ],
         }).compile();
 
@@ -68,6 +105,9 @@ describe('AuthService', () => {
         dataSource = module.get<DataSource>(DataSource);
         userService = module.get<UserService>(UserService);
         jwtService = module.get<JwtService>(JwtService);
+        mailerAuthService = module.get<MailerAuthService>(MailerAuthService);
+        secretKeyConfig = module.get<ConfigService>(ConfigService).get('secretkey_env') as SecretKeyConfig;
+        cachingAuthService = module.get<CachingAuthService>(CachingAuthService);
 
         jest.clearAllMocks();
     });
@@ -392,6 +432,7 @@ describe('AuthService', () => {
             queryRunner.startTransaction.mockResolvedValue();
             queryRunner.commitTransaction.mockResolvedValue();
             queryRunner.release.mockResolvedValue();
+            mailerAuthService.sendEmailVerification.mockResolvedValue();
 
             const result = await service.createAuth(payload);
 
@@ -409,7 +450,9 @@ describe('AuthService', () => {
             );
             expect(queryRunner.commitTransaction).toHaveBeenCalled();
             expect(queryRunner.release).toHaveBeenCalled();
-            expect(result).toEqual({ message: 'Account registered successfully' });
+            expect(result).toEqual({
+                message: 'Account registered successfully, please check your email to verify your account',
+            });
         });
         it('should throw BadRequest if existing email', async () => {
             const payload = {
@@ -467,6 +510,63 @@ describe('AuthService', () => {
             });
             expect(AuthHelper.hashText).not.toHaveBeenCalled();
             expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+            expect(queryRunner.release).toHaveBeenCalled();
+        });
+        it('should throw error if sending email verification fails', async () => {
+            const payload = {
+                email: 'johndoe@email.com',
+                password: 'validPassword',
+                username: 'johndoe',
+            };
+
+            const authEntity = {
+                authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                email: payload.email,
+                username: 'johndoe',
+                password: 'hashedPassword',
+                status: AuthStatus.INACTIVE,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                lastLogin: null,
+            };
+
+            const userEntity = {
+                auth: {
+                    authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                },
+                userId: '123e4567-e89b-12d3-a456-426614174001' as UUID,
+            };
+
+            const queryRunner = dataSource.createQueryRunner();
+            authRepository.existByEmail.mockResolvedValue(false);
+            authRepository.existByUsername.mockResolvedValue(false);
+            jest.spyOn(AuthHelper, 'hashText').mockResolvedValue('hashedPassword');
+            authRepository.create.mockReturnValue(authEntity);
+            queryRunner.manager.save.mockResolvedValue(authEntity);
+            userService.createUserWithTransaction.mockResolvedValue(userEntity);
+            queryRunner.startTransaction.mockResolvedValue();
+            queryRunner.release.mockResolvedValue();
+            mailerAuthService.sendEmailVerification.mockRejectedValue(
+                new InternalServerErrorException('Failed to send email verification'),
+            );
+
+            await expect(service.createAuth(payload)).rejects.toMatchObject({
+                message: 'Failed to send email verification',
+            });
+
+            expect(authRepository.existByEmail).toHaveBeenCalledWith(payload.email);
+            expect(AuthHelper.hashText).toHaveBeenCalledWith(payload.password);
+            expect(authRepository.create).toHaveBeenCalledWith({
+                email: payload.email,
+                password: 'hashedPassword',
+                username: payload.username,
+            });
+            expect(queryRunner.manager.save).toHaveBeenCalledWith(authEntity);
+            expect(userService.createUserWithTransaction).toHaveBeenCalledWith(
+                { authId: authEntity.authId },
+                queryRunner,
+            );
+            expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
             expect(queryRunner.release).toHaveBeenCalled();
         });
         it('should throw error if an unexpected error occurs', async () => {
@@ -599,6 +699,192 @@ describe('AuthService', () => {
                 message: 'An unexpected error occurred',
             });
             expect(jwtService.revokeRefreshToken).toHaveBeenCalledWith(payload);
+        });
+    });
+
+    describe('verifyEmail', () => {
+        it('should verify email and return success message', async () => {
+            // Arrange
+            const authId = '123e4567-e89b-12d3-a456-426614174000';
+            const username = 'testuser';
+            const email = 'test@email.com';
+            const expiredAt = Date.now() + 1000 * 60 * 60; // 1 hour from now
+            const rawText = [authId, email, username, expiredAt].join(';');
+            const token = EncryptionHelper.encode(rawText, 'aes-256-gcm', secretKeyConfig.emailVerificationSecret);
+
+            authRepository.update.mockResolvedValue();
+            mailerAuthService.sendWelcomeEmail.mockResolvedValue();
+
+            // Act
+            const result = await service.verifyEmail(token);
+
+            // Assert
+            expect(authRepository.update).toHaveBeenCalledWith({ authId, email }, { status: AuthStatus.ACTIVE });
+            expect(mailerAuthService.sendWelcomeEmail).toHaveBeenCalledWith(email, username);
+            expect(result).toEqual({ message: 'Email verified successfully' });
+        });
+        it('should throw BadRequest if token was expired', async () => {
+            // Arrange
+            const authId = '123e4567-e89b-12d3-a456-426614174000';
+            const email = 'test@email.com';
+            const username = 'testuser';
+            const expiredAt = Date.now() - 1000 * 60 * 60; // 1 hour ago
+            const rawText = [authId, email, username, expiredAt].join(';');
+            const token = EncryptionHelper.encode(rawText, 'aes-256-gcm', secretKeyConfig.emailVerificationSecret);
+
+            authRepository.update.mockResolvedValue();
+
+            // Act
+            await expect(service.verifyEmail(token)).rejects.toMatchObject({
+                message: 'Email verification token has expired',
+            });
+
+            // Assert
+            expect(authRepository.update).not.toHaveBeenCalled();
+        });
+        it('should throw Forbidden if authId is not valid', async () => {
+            // Arrange
+            const authId = '123e4567-e89b-12d3-a456-4266141700'; // Invalid UUID
+            const username = 'testuser';
+            const email = 'test@email.com';
+            const expiredAt = Date.now() - 1000 * 60 * 60; // 1 hour ago
+            const rawText = [authId, email, username, expiredAt].join(';');
+            const token = EncryptionHelper.encode(rawText, 'aes-256-gcm', secretKeyConfig.emailVerificationSecret);
+
+            authRepository.update.mockResolvedValue();
+
+            // Act
+            await expect(service.verifyEmail(token)).rejects.toMatchObject({
+                message: 'Access forbidden',
+            });
+
+            // Assert
+            expect(authRepository.update).not.toHaveBeenCalled();
+        });
+        it('should throw unexpected error if an unexpected error occurs', async () => {
+            const token = 'invalid-token';
+
+            authRepository.update.mockResolvedValue();
+
+            // Act
+            await expect(service.verifyEmail(token)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            // Assert
+            expect(authRepository.update).not.toHaveBeenCalled();
+        });
+    });
+    describe('resendEmailVerification', () => {
+        it('should resend email verification if token is valid and user exists', async () => {
+            // Arrange
+            const authId = '123e4567-e89b-12d3-a456-426614174000';
+            const username = 'testuser';
+            const email = 'test@email.com';
+            const expiredAt = Date.now() - 1000 * 60 * 60; // 1 hour ago
+            const rawText = [authId, email, username, expiredAt].join(';');
+            const token = EncryptionHelper.encode(rawText, 'aes-256-gcm', secretKeyConfig.emailVerificationSecret);
+            const authEntity: AuthEntity = {
+                authId: authId as UUID,
+                email,
+                username,
+                password: 'hashedPassword',
+                status: AuthStatus.INACTIVE,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                lastLogin: new Date(),
+            };
+            authRepository.findOneBy.mockResolvedValue(authEntity);
+            const createEmailVerificationTokenSpy = jest
+                .spyOn<any, any>(service as any, 'createEmailVerificationToken')
+                .mockResolvedValue(undefined);
+            cachingAuthService.getTTLResendEmailVerify.mockResolvedValue(0);
+
+            // Act
+            const result = await service.resendEmailVerification(token);
+
+            // Assert
+            expect(authRepository.findOneBy).toHaveBeenCalledWith({ authId, email });
+            expect(createEmailVerificationTokenSpy).toHaveBeenCalledWith(authEntity);
+            expect(result).toEqual({ message: 'Email verified successfully' });
+        });
+
+        it('should throw BadRequestException if token is unexpired', async () => {
+            // Arrange
+            const authId = '123e4567-e89b-12d3-a456-426614174000';
+            const email = 'test@email.com';
+            const username = 'testuser';
+            const expiredAt = Date.now() + 1000 * 60 * 60; // 1 hour ago
+            const rawText = [authId, email, username, expiredAt].join(';');
+            const token = EncryptionHelper.encode(rawText, 'aes-256-gcm', secretKeyConfig.emailVerificationSecret);
+            const authEntity: AuthEntity = {
+                authId: authId as UUID,
+                email,
+                username: 'testuser',
+                password: 'hashedPassword',
+                status: AuthStatus.INACTIVE,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                lastLogin: new Date(),
+            };
+            authRepository.findOneBy.mockResolvedValue(authEntity);
+
+            // Act & Assert
+            await expect(service.resendEmailVerification(token)).rejects.toMatchObject({
+                message: 'Email verification token is still valid',
+            });
+        });
+
+        it('should throw NotFoundException if user is not found', async () => {
+            // Arrange
+            const authId = '123e4567-e89b-12d3-a456-426614174000';
+            const email = 'test@email.com';
+            const username = 'testuser';
+            const expiredAt = Date.now() - 1000 * 60 * 60; // 1 hour from now
+            const rawText = [authId, email, username, expiredAt].join(';');
+            const token = EncryptionHelper.encode(rawText, 'aes-256-gcm', secretKeyConfig.emailVerificationSecret);
+            authRepository.findOneBy.mockResolvedValue(null);
+
+            // Act & Assert
+            await expect(service.resendEmailVerification(token)).rejects.toMatchObject({
+                message: 'Account not found',
+            });
+        });
+
+        it('throw BadRequest if time remaining for resending', async () => {
+            // Arrange
+            const authId = '123e4567-e89b-12d3-a456-426614174000';
+            const email = 'test@email.com';
+            const username = 'testuser';
+            const expiredAt = Date.now() - 1000 * 60 * 60; // 1 hour ago
+            const rawText = [authId, email, username, expiredAt].join(';');
+            const token = EncryptionHelper.encode(rawText, 'aes-256-gcm', secretKeyConfig.emailVerificationSecret);
+            const authEntity: AuthEntity = {
+                authId: authId as UUID,
+                email,
+                username: 'testuser',
+                password: 'hashedPassword',
+                status: AuthStatus.INACTIVE,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                lastLogin: new Date(),
+            };
+            authRepository.findOneBy.mockResolvedValue(authEntity);
+            cachingAuthService.getTTLResendEmailVerify.mockResolvedValue(1000 * 60 * 60); // 1 hour
+
+            // Act
+            await expect(service.resendEmailVerification(token)).rejects.toBeInstanceOf(BadRequestException);
+            expect(authRepository.findOneBy).toHaveBeenCalledWith({ authId, email });
+        });
+
+        it('should throw BadRequestException or ForbiddenException if token is invalid', async () => {
+            // Arrange
+            const token = 'invalid-token';
+
+            // Act & Assert
+            await expect(service.resendEmailVerification(token)).rejects.toMatchObject({
+                message: expect.stringMatching(/forbidden|unexpected|invalid/i),
+            });
         });
     });
 });

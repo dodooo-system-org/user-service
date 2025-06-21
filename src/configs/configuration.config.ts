@@ -92,11 +92,12 @@ export const cacheConfig = registerAs('cache_env', (): CacheConfig => {
 
 export interface MailerConfig {
     service: 'gmail';
+    host: string;
+    port: number;
+    secure: boolean;
     auth: {
-        type: 'OAuth2';
         user: string;
-        clientId: string;
-        clientSecret: string;
+        pass: string;
     };
 }
 
@@ -104,11 +105,42 @@ export const mailerConfig = registerAs('mailer_env', (): MailerConfig => {
     const configService = new ConfigService();
     return {
         service: 'gmail',
+        host: getRequiredEnv<string>(configService, 'MAILER_HOST'),
+        port: getRequiredEnv<number>(configService, 'MAILER_PORT'),
+        secure: configService.get<boolean>('MAILER_SECURE', false), // Default to false if not set
         auth: {
-            type: 'OAuth2',
             user: getRequiredEnv<string>(configService, 'MAILER_USER'),
-            clientId: getRequiredEnv<string>(configService, 'MAILER_GOOGLE_CLIENT_ID'),
-            clientSecret: getRequiredEnv<string>(configService, 'MAILER_GOOGLE_CLIENT_SECRET'),
+            pass: getRequiredEnv<string>(configService, 'MAILER_PASSWORD'),
         },
+    };
+});
+
+export interface SecretKeyConfig {
+    emailVerificationSecret: string;
+    passwordResetSecret: string;
+}
+
+export const secretKeyConfig = registerAs('secretkey_env', (): SecretKeyConfig => {
+    const configService = new ConfigService();
+    return {
+        emailVerificationSecret: getRequiredEnv<string>(configService, 'EMAIL_VERIFICATION_SECRET'),
+        passwordResetSecret: getRequiredEnv<string>(configService, 'PASSWORD_RESET_SECRET'),
+    };
+});
+
+export interface AppContentConfig {
+    appName: string;
+    appDescription: string;
+    appVersion: string;
+    clientUrl: string;
+}
+
+export const appContentConfig = registerAs('appcontent_env', (): AppContentConfig => {
+    const configService = new ConfigService();
+    return {
+        appDescription: getRequiredEnv<string>(configService, 'APP_DESCRIPTION'),
+        appName: getRequiredEnv<string>(configService, 'APP_NAME'),
+        appVersion: getRequiredEnv<string>(configService, 'APP_VERSION'),
+        clientUrl: getRequiredEnv<string>(configService, 'APP_CLIENT_URL'),
     };
 });

@@ -1,7 +1,7 @@
 export const AUTH_MESSAGES = {
     // Success messages
     SUCCESS: {
-        REGISTRATION_SUCCESS: 'Account registered successfully',
+        REGISTRATION_SUCCESS: 'Account registered successfully, please check your email to verify your account',
         LOGIN_SUCCESS: 'Login successful',
         LOGOUT_SUCCESS: 'Logout successful',
         PASSWORD_CHANGED: 'Password changed successfully',
@@ -23,6 +23,9 @@ export const AUTH_MESSAGES = {
         ACCOUNT_INACTIVE: 'Account is not verified',
         ACCOUNT_SUSPENDED: 'Your account has been suspended',
         ACCOUNT_NOT_FOUND: 'Account not found',
+        EMAIL_VERIFICATION_FAILED: 'Account not found or already verified',
+        EMAIL_VERIFICATION_TOKEN_EXPIRED: 'Email verification token has expired',
+        EMAIL_VERIFICATION_TOKEN_UNEXPIRED: 'Email verification token is still valid',
     },
 
     // Validation messages

@@ -14,7 +14,6 @@ import { MailerAuthService } from './services';
             useFactory: (configService: ConfigService) => {
                 const mailerConfig = configService.get<MailerConfig>('mailer_env');
                 const appContent = configService.get<AppContentConfig>('appcontent_env');
-                console.log(mailerConfig);
                 return {
                     transport: {
                         service: mailerConfig?.service,

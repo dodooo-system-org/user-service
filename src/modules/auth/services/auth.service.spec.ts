@@ -1,6 +1,6 @@
 import { CachingAuthService } from '@src/caching/services/caching.auth.service';
 import { SecretKeyConfig } from '@src/configs/configuration.config';
-import { AuthEntity, AuthStatus } from '@src/database/entities';
+import { AuthEntity, AuthStatus, UserRole } from '@src/database/entities';
 import { AuthHelper } from '@src/helpers/auth.helper';
 import { EncryptionHelper } from '@src/helpers/encryption.helper';
 import { MailerAuthService } from '@src/modules/mailer/services';
@@ -95,6 +95,8 @@ describe('AuthService', () => {
                     useValue: {
                         cachingResendEmailVerify: jest.fn(),
                         getTTLResendEmailVerify: jest.fn(),
+                        getCachedAuth: jest.fn(),
+                        cacheAuth: jest.fn(),
                     },
                 },
             ],
@@ -132,6 +134,7 @@ describe('AuthService', () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
+                role: UserRole.USER,
             };
 
             authRepository.findOneByEmail.mockResolvedValue(authEntity);
@@ -173,6 +176,7 @@ describe('AuthService', () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
+                role: UserRole.USER,
             };
 
             authRepository.findOneByEmail.mockResolvedValue(authEntity);
@@ -200,6 +204,7 @@ describe('AuthService', () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
+                role: UserRole.USER,
             };
 
             authRepository.findOneByEmail.mockResolvedValue(authEntity);
@@ -224,6 +229,7 @@ describe('AuthService', () => {
                 username: 'johndoe',
                 password: 'hashedPassword',
                 status: AuthStatus.INACTIVE,
+                role: UserRole.USER,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
@@ -254,6 +260,7 @@ describe('AuthService', () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
+                role: UserRole.USER,
             };
 
             authRepository.findOneByEmail.mockResolvedValue(authEntity);
@@ -293,6 +300,7 @@ describe('AuthService', () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
+                role: UserRole.USER,
             };
 
             authRepository.findOneBy.mockResolvedValue(authEntity);
@@ -329,6 +337,7 @@ describe('AuthService', () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
+                role: UserRole.USER,
             };
             authRepository.findOneBy.mockResolvedValue(authEntity);
 
@@ -351,6 +360,7 @@ describe('AuthService', () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
+                role: UserRole.USER,
             };
             authRepository.findOneBy.mockResolvedValue(authEntity);
 
@@ -370,6 +380,7 @@ describe('AuthService', () => {
                 username: 'johndoe',
                 password: 'hashedPassword',
                 status: AuthStatus.INACTIVE,
+                role: UserRole.USER,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
@@ -410,6 +421,7 @@ describe('AuthService', () => {
                 username: 'johndoe',
                 password: 'hashedPassword',
                 status: AuthStatus.INACTIVE,
+                role: UserRole.USER,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: null,
@@ -525,6 +537,7 @@ describe('AuthService', () => {
                 username: 'johndoe',
                 password: 'hashedPassword',
                 status: AuthStatus.INACTIVE,
+                role: UserRole.USER,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: null,
@@ -602,6 +615,7 @@ describe('AuthService', () => {
             createdAt: new Date('2024-01-01T00:00:00Z'),
             updatedAt: new Date('2024-01-01T00:00:00Z'),
             lastLogin: null,
+            role: UserRole.USER,
         };
         it('should return login response with tokens and mapped auth', async () => {
             const tokens = {
@@ -617,6 +631,7 @@ describe('AuthService', () => {
                 updatedAt: authEntity.updatedAt,
                 lastLogin: authEntity.lastLogin,
                 username: authEntity.username,
+                role: authEntity.role,
             };
 
             jwtService.generateTokens.mockResolvedValue(tokens);
@@ -790,6 +805,7 @@ describe('AuthService', () => {
                 username,
                 password: 'hashedPassword',
                 status: AuthStatus.INACTIVE,
+                role: UserRole.USER,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
@@ -823,6 +839,7 @@ describe('AuthService', () => {
                 username: 'testuser',
                 password: 'hashedPassword',
                 status: AuthStatus.INACTIVE,
+                role: UserRole.USER,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
@@ -865,6 +882,7 @@ describe('AuthService', () => {
                 username: 'testuser',
                 password: 'hashedPassword',
                 status: AuthStatus.INACTIVE,
+                role: UserRole.USER,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 lastLogin: new Date(),
@@ -884,6 +902,63 @@ describe('AuthService', () => {
             // Act & Assert
             await expect(service.resendEmailVerification(token)).rejects.toMatchObject({
                 message: expect.stringMatching(/forbidden|unexpected|invalid/i),
+            });
+        });
+    });
+
+    describe('getAuthById', () => {
+        const authId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
+        const authEntity: AuthEntity = {
+            authId,
+            email: 'test@email.com',
+            username: 'testuser',
+            password: 'hashedPassword',
+            status: AuthStatus.ACTIVE,
+            role: UserRole.USER,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            lastLogin: new Date(),
+        };
+        const { password, ...authDto } = authEntity;
+
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+
+        it('should return cached auth if present', async () => {
+            cachingAuthService.getCachedAuth = jest.fn().mockResolvedValue(authEntity);
+            const result = await service.getAuthById(authId);
+            expect(cachingAuthService.getCachedAuth).toHaveBeenCalledWith(authId);
+            expect(result).toEqual(authDto);
+        });
+
+        it('should return DB auth if not cached and cache it', async () => {
+            cachingAuthService.getCachedAuth.mockResolvedValue(undefined);
+            authRepository.findOneBy.mockResolvedValue(authEntity);
+            cachingAuthService.cacheAuth.mockResolvedValue();
+
+            const result = await service.getAuthById(authId);
+            expect(authRepository.findOneBy).toHaveBeenCalledWith({ authId });
+            expect(cachingAuthService.cacheAuth).toHaveBeenCalledWith(authId, authDto);
+            expect(result).toEqual(authDto);
+        });
+
+        it('should throw NotFoundException if auth not found', async () => {
+            cachingAuthService.getCachedAuth.mockResolvedValue(undefined);
+            authRepository.findOneBy.mockResolvedValue(null);
+
+            await expect(service.getAuthById(authId)).rejects.toMatchObject({
+                message: 'Account not found',
+            });
+            expect(authRepository.findOneBy).toHaveBeenCalledWith({ authId });
+        });
+
+        it('should handle unexpected errors', async () => {
+            const error = new Error('Unexpected error');
+            cachingAuthService.getCachedAuth.mockRejectedValue(error);
+
+            await expect(service.getAuthById(authId)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
             });
         });
     });

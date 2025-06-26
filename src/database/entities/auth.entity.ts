@@ -10,6 +10,11 @@ export enum AuthStatus {
     DELETED = 'deleted',
 }
 
+export enum UserRole {
+    ADMIN = 'admin',
+    USER = 'user',
+}
+
 @Entity({ name: 'auths', comment: 'Authentication details of users' })
 export class AuthEntity extends BaseEntity {
     @PrimaryGeneratedColumn('uuid', {
@@ -34,6 +39,9 @@ export class AuthEntity extends BaseEntity {
 
     @Column({ name: 'status', enum: AuthStatus, default: AuthStatus.INACTIVE, nullable: false })
     readonly status: AuthStatus;
+
+    @Column({ name: 'role', type: 'enum', enum: UserRole, default: UserRole.USER })
+    readonly role: UserRole;
 
     @Column({
         name: 'last_login',

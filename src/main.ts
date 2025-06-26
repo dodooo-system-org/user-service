@@ -8,6 +8,7 @@ import { Transport } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { rabbitMQConfig } from './configs/configuration.config';
 import { SwaggerConfiguration } from './configs/swagger.config';
+import { HttpExceptionFilter } from './filters/http-exception.filter';
 
 async function bootstrap() {
     const logger = new Logger(bootstrap.name);
@@ -24,6 +25,7 @@ async function bootstrap() {
                 stopAtFirstError: true,
             }),
         );
+        app.useGlobalFilters(new HttpExceptionFilter());
 
         app.use(cookieParser());
 

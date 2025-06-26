@@ -11,6 +11,7 @@ export const authEntityToDtoMapper = (entity: AuthEntity): AuthResponseDto => {
         updatedAt: entity.updatedAt,
         lastLogin: entity.lastLogin,
         username: entity.username,
+        role: entity.role,
     };
 
     return dto;

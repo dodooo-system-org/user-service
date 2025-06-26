@@ -1,3 +1,4 @@
+import { AuthEntity } from '@src/database/entities';
 import { Cacheable } from 'cacheable';
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -64,4 +65,32 @@ export class CachingAuthService {
         }
     }
     /* eslint-enable */
+    async cacheAuth(authId: string, authData: Partial<AuthEntity>, ttl?: number): Promise<void> {
+        try {
+            const key = `auth:${authId}`;
+            await this.cacheManager.set(key, authData, ttl || '1h');
+        } catch (error) {
+            this.logger.error('Error caching auth data: ', error);
+        }
+    }
+
+    async getCachedAuth(authId: string): Promise<Partial<AuthEntity | undefined>> {
+        try {
+            const key = `auth:${authId}`;
+            const cachedData = await this.cacheManager.get<Partial<AuthEntity>>(key);
+            return cachedData || undefined;
+        } catch (error) {
+            this.logger.error('Error retrieving cached auth data: ', error);
+            return undefined;
+        }
+    }
+
+    async clearCachedAuth(authId: string): Promise<void> {
+        try {
+            const key = `auth:${authId}`;
+            await this.cacheManager.delete(key);
+        } catch (error) {
+            this.logger.error('Error clearing cached auth data: ', error);
+        }
+    }
 }

@@ -21,6 +21,7 @@ export const COMMON_MESSAGES = {
         TIMEOUT_ERROR: 'Request timeout',
         DATABASE_ERROR: 'Database operation failed',
         EXTERNAL_SERVICE_ERROR: 'External service error',
+        UNAUTHORIZED: 'Unauthorized access',
     },
 
     // Confirmation messages

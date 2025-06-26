@@ -21,7 +21,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 import { UserService } from '../../user/user.service';
-import { CreateAuthDto, JwtPayload, LoginBodyDto, LoginResponseDto } from '../dto';
+import { AuthResponseDto, CreateAuthDto, JwtPayload, LoginBodyDto, LoginResponseDto } from '../dto';
 import { authEntityToDtoMapper } from '../mappers';
 import { AuthRepository } from '../repositories';
 import { JwtService } from './jwt.service';
@@ -266,6 +266,31 @@ export class AuthService {
             return { message: AUTH_MESSAGES.SUCCESS.EMAIL_VERIFIED };
         } catch (error) {
             this.logger.error('Error resending email verification:', error);
+            throw ErrorHelper.generateErrorService(error);
+        }
+    }
+
+    async getAuthById(authId: UUID): Promise<Partial<AuthResponseDto>> {
+        try {
+            // Try caching first
+            const cachedAuth = await this.cachingAuthService.getCachedAuth(authId);
+            if (cachedAuth) {
+                return authEntityToDtoMapper(cachedAuth as AuthEntity);
+            }
+
+            // If not cached, fetch from database
+            const auth = await this.authRepository.findOneBy({ authId });
+            if (!auth) {
+                throw new NotFoundException(AUTH_MESSAGES.ERROR.ACCOUNT_NOT_FOUND);
+            }
+
+            // Caching the auth data without synchronously
+            const authDto = authEntityToDtoMapper(auth);
+            this.cachingAuthService.cacheAuth(auth.authId, authDto);
+
+            return authDto;
+        } catch (error) {
+            this.logger.error('Error getting auth by ID:', error);
             throw ErrorHelper.generateErrorService(error);
         }
     }

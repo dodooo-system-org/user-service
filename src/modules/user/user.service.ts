@@ -45,4 +45,13 @@ export class UserService {
             throw ErrorHelper.generateErrorService(error);
         }
     }
+
+    // public async getUserById(authId: UUID): Promise<UserEntity | null> {
+    //     try {
+    //         return await this.userRepository.getUserByAuthId(authId);
+    //     } catch (error) {
+    //         this.logger.error(`Error fetching user by ID: ${error}`);
+    //         throw ErrorHelper.generateErrorService(error);
+    //     }
+    // }
 }

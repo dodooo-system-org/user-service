@@ -1,6 +1,7 @@
 import { UUID } from 'crypto';
 
 export interface JwtPayload {
+    iss: string; // Issuer
     sub: UUID; // Subject (usually user ID or auth ID)
     email: string;
     jwtId?: UUID; // Optional JWT ID for tracking

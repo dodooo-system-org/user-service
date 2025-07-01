@@ -25,6 +25,7 @@ describe('JwtService', () => {
                                     secret: 'test_jwt_secret',
                                     jwtAccessTokenExpiresIn: '1h',
                                     jwtRefreshTokenExpiresIn: '7d',
+                                    claimIssuer: 'test-issuer',
                                 };
                             }
                             return undefined;
@@ -146,6 +147,77 @@ describe('JwtService', () => {
             jwtRepository.save.mockRejectedValueOnce(new Error('db error'));
             await expect(service.generateTokens(payload)).rejects.toMatchObject({
                 message: 'An unexpected error occurred',
+            });
+        });
+    });
+
+    describe('extractPayloadFromToken', () => {
+        const mockPayload = {
+            iss: 'test-issuer',
+            sub: 'db10bd54-8366-4bdc-8271-f256ed4d8510' as UUID,
+            email: 'johndoe@email.com',
+            jwtId: 'jwt-id-123' as UUID,
+        };
+
+        it('should extract payload successfully from valid token', async () => {
+            const token = 'valid.jwt.token';
+
+            // Mock verifyAsync to return the payload
+            jest.spyOn(service, 'verifyAsync').mockResolvedValue(mockPayload);
+
+            const result = await service.extractPayloadFromToken(token);
+
+            expect(result).toEqual(mockPayload);
+            expect(service.verifyAsync).toHaveBeenCalledWith(token, {
+                secret: 'test_jwt_secret',
+            });
+        });
+
+        it('should throw error when token verification fails', async () => {
+            const token = 'invalid.jwt.token';
+            const verificationError = new Error('Token verification failed');
+
+            // Mock verifyAsync to throw an error
+            jest.spyOn(service, 'verifyAsync').mockRejectedValue(verificationError);
+
+            await expect(service.extractPayloadFromToken(token)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            expect(service.verifyAsync).toHaveBeenCalledWith(token, {
+                secret: 'test_jwt_secret',
+            });
+        });
+
+        it('should throw error when token is expired', async () => {
+            const token = 'expired.jwt.token';
+            const expiredError = new Error('jwt expired');
+
+            // Mock verifyAsync to throw an expired token error
+            jest.spyOn(service, 'verifyAsync').mockRejectedValue(expiredError);
+
+            await expect(service.extractPayloadFromToken(token)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            expect(service.verifyAsync).toHaveBeenCalledWith(token, {
+                secret: 'test_jwt_secret',
+            });
+        });
+
+        it('should throw error when token is malformed', async () => {
+            const token = 'malformed-token';
+            const malformedError = new Error('jwt malformed');
+
+            // Mock verifyAsync to throw a malformed token error
+            jest.spyOn(service, 'verifyAsync').mockRejectedValue(malformedError);
+
+            await expect(service.extractPayloadFromToken(token)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            expect(service.verifyAsync).toHaveBeenCalledWith(token, {
+                secret: 'test_jwt_secret',
             });
         });
     });

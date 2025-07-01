@@ -19,6 +19,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 
 import { UserService } from '../../user/user.service';
 import { AuthResponseDto, CreateAuthDto, JwtPayload, LoginBodyDto, LoginResponseDto } from '../dto';
@@ -120,7 +121,7 @@ export class AuthService {
         }
     }
 
-    async validateJwtAuth(payload: JwtPayload): Promise<AuthEntity> {
+    async validateJwtAuth(payload: JwtPayload): Promise<Partial<AuthEntity>> {
         try {
             const auth = await this.authRepository.findOneBy({ authId: payload.sub, email: payload.email });
 
@@ -132,7 +133,7 @@ export class AuthService {
             if (checkBlockedAuth) {
                 throw checkBlockedAuth;
             }
-            return auth;
+            return authEntityToDtoMapper(auth);
         } catch (error) {
             this.logger.error('Error validating jwt auth:', error);
             throw ErrorHelper.generateErrorService(error);
@@ -291,6 +292,27 @@ export class AuthService {
             return authDto;
         } catch (error) {
             this.logger.error('Error getting auth by ID:', error);
+            throw ErrorHelper.generateErrorService(error);
+        }
+    }
+
+    async getAuthByToken(token: string): Promise<Partial<AuthResponseDto>> {
+        try {
+            const payload = await this.jwtService.extractPayloadFromToken(token);
+            if (!payload || !payload.sub || !payload.email) {
+                throw new BadRequestException(AUTH_MESSAGES.ERROR.INVALID_TOKEN);
+            }
+            return this.getAuthById(payload.sub);
+        } catch (error) {
+            this.logger.error('Error getting auth by token:', error);
+            throw ErrorHelper.generateErrorService(error);
+        }
+    }
+    async validateTokenResponse(token: string, context: RmqContext): Promise<void> {
+        try {
+            console.log({ token, context });
+        } catch (error) {
+            this.logger.error('Error validating token response:', error);
             throw ErrorHelper.generateErrorService(error);
         }
     }

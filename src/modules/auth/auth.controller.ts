@@ -2,6 +2,7 @@ import { AUTH_TOKEN_NAME } from '@src/constants';
 import { Response } from 'express';
 
 import { Body, Controller, Delete, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Ctx, EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CreateAuthDto, LoginBodyDto, RequestJwtDto, RequestRefreshJwtDto } from './dto';
@@ -111,5 +112,10 @@ export class AuthController {
     @Post('resend-email-verify')
     resendEmailVerify(@Body('token') token: string) {
         return this.authService.resendEmailVerification(token);
+    }
+
+    @EventPattern('*')
+    async validateTokenRequest(data: any): Promise<void> {
+        console.log({ data });
     }
 }

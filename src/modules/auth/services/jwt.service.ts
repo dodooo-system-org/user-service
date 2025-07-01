@@ -66,8 +66,9 @@ export class JwtService extends BaseJwtService {
         payload: Pick<JwtPayload, 'sub' | 'email'>,
     ): Promise<{ accessToken: TokenResponse; refreshToken: TokenResponse }> {
         try {
-            const accessToken = await this.generateAccessToken(payload);
-            const refreshToken = await this.generateRefreshToken(payload);
+            const issuer = this.jwtConfig.claimIssuer;
+            const accessToken = await this.generateAccessToken({ ...payload, iss: issuer });
+            const refreshToken = await this.generateRefreshToken({ ...payload, iss: issuer });
 
             // Store the refresh token in the cache and database
             const promiseActions: Promise<any>[] = [];
@@ -115,6 +116,15 @@ export class JwtService extends BaseJwtService {
             return !!dbResult?.affected && dbResult?.affected > 0;
         } catch (error) {
             this.myLogger.error('Error revoking refresh token:', error);
+            throw ErrorHelper.generateErrorService(error);
+        }
+    }
+    async extractPayloadFromToken(token: string): Promise<JwtPayload> {
+        try {
+            const decoded = await this.verifyAsync<JwtPayload>(token, { secret: this.jwtConfig.secret });
+            return decoded;
+        } catch (error) {
+            this.myLogger.error('Error extracting token:', error);
             throw ErrorHelper.generateErrorService(error);
         }
     }

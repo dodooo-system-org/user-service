@@ -66,6 +66,7 @@ describe('AuthService', () => {
                     useValue: {
                         generateTokens: jest.fn(),
                         revokeRefreshToken: jest.fn(),
+                        extractPayloadFromToken: jest.fn(),
                     },
                 },
                 {
@@ -290,6 +291,7 @@ describe('AuthService', () => {
             const payload = {
                 email: 'johndoe@email.com',
                 sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                iss: 'dodooo',
             };
             const authEntity: AuthEntity = {
                 authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
@@ -303,17 +305,20 @@ describe('AuthService', () => {
                 role: UserRole.USER,
             };
 
+            const { password, ...expectedAuth } = authEntity;
+
             authRepository.findOneBy.mockResolvedValue(authEntity);
 
             const result = await service.validateJwtAuth(payload);
 
-            expect(result).toEqual(authEntity);
+            expect(result).toEqual(expectedAuth);
             expect(authRepository.findOneBy).toHaveBeenCalledWith({ authId: payload.sub, email: payload.email });
         });
         it('should throw NotFoundException if auth not found', async () => {
             const payload = {
                 email: 'johndoe@email.com',
                 sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                iss: 'dodooo',
             };
 
             authRepository.findOneBy.mockResolvedValue(null);
@@ -327,6 +332,7 @@ describe('AuthService', () => {
             const payload = {
                 email: 'johndoe@email.com',
                 sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                iss: 'dodooo',
             };
             const authEntity: AuthEntity = {
                 authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
@@ -350,6 +356,7 @@ describe('AuthService', () => {
             const payload = {
                 email: 'johndoe@email.com',
                 sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                iss: 'dodooo',
             };
             const authEntity: AuthEntity = {
                 authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
@@ -373,6 +380,7 @@ describe('AuthService', () => {
             const payload = {
                 email: 'johndoe@email.com',
                 sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                iss: 'dodooo',
             };
             const authEntity: AuthEntity = {
                 authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
@@ -396,6 +404,7 @@ describe('AuthService', () => {
             const payload = {
                 email: 'johndoe@email.com',
                 sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+                iss: 'dodooo',
             };
             const error = new Error('Unexpected error');
             authRepository.findOneBy.mockRejectedValue(error);
@@ -658,7 +667,11 @@ describe('AuthService', () => {
     });
 
     describe('logout', () => {
-        const payload = { email: 'johndoe@email.com', sub: '123e4567-e89b-12d3-a456-426614174000' as UUID };
+        const payload = {
+            email: 'johndoe@email.com',
+            sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+            iss: 'dodooo',
+        };
 
         it('should return logout success message if token is revoked', async () => {
             jwtService.revokeRefreshToken.mockResolvedValue(true);
@@ -684,6 +697,7 @@ describe('AuthService', () => {
         const payload = {
             email: 'johndoe@email.com',
             sub: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+            iss: 'dodooo',
         };
 
         it('should return new tokens if refresh token is revoked', async () => {
@@ -960,6 +974,101 @@ describe('AuthService', () => {
             await expect(service.getAuthById(authId)).rejects.toMatchObject({
                 message: 'An unexpected error occurred',
             });
+        });
+    });
+
+    describe('getAuthByToken', () => {
+        const validToken = 'valid.jwt.token';
+        const authId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
+        const mockPayload = {
+            sub: authId,
+            email: 'test@example.com',
+            iss: 'test-issuer',
+        };
+        const mockAuthEntity: AuthEntity = {
+            authId,
+            email: 'test@example.com',
+            username: 'testuser',
+            password: 'hashedPassword',
+            status: AuthStatus.ACTIVE,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            lastLogin: new Date(),
+            role: UserRole.USER,
+        };
+
+        it('should return auth DTO when token is valid and auth exists', async () => {
+            jwtService.extractPayloadFromToken.mockResolvedValue(mockPayload);
+            cachingAuthService.getCachedAuth.mockResolvedValue(null);
+            authRepository.findOneBy.mockResolvedValue(mockAuthEntity);
+
+            const result = await service.getAuthByToken(validToken);
+
+            expect(jwtService.extractPayloadFromToken).toHaveBeenCalledWith(validToken);
+            expect(result).toEqual({
+                authId: mockAuthEntity.authId,
+                email: mockAuthEntity.email,
+                username: mockAuthEntity.username,
+                status: mockAuthEntity.status,
+                createdAt: mockAuthEntity.createdAt,
+                updatedAt: mockAuthEntity.updatedAt,
+                lastLogin: mockAuthEntity.lastLogin,
+                role: mockAuthEntity.role,
+            });
+        });
+
+        it('should throw BadRequestException when token extraction fails', async () => {
+            jwtService.extractPayloadFromToken.mockRejectedValue(new Error('Invalid token'));
+
+            await expect(service.getAuthByToken(validToken)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            expect(jwtService.extractPayloadFromToken).toHaveBeenCalledWith(validToken);
+        });
+
+        it('should throw BadRequestException when payload is null', async () => {
+            jwtService.extractPayloadFromToken.mockResolvedValue(null);
+
+            await expect(service.getAuthByToken(validToken)).rejects.toThrow(BadRequestException);
+
+            expect(jwtService.extractPayloadFromToken).toHaveBeenCalledWith(validToken);
+        });
+
+        it('should throw BadRequestException when payload is missing sub', async () => {
+            const invalidPayload = {
+                email: 'test@example.com',
+                iss: 'test-issuer',
+            };
+            jwtService.extractPayloadFromToken.mockResolvedValue(invalidPayload);
+
+            await expect(service.getAuthByToken(validToken)).rejects.toThrow(BadRequestException);
+
+            expect(jwtService.extractPayloadFromToken).toHaveBeenCalledWith(validToken);
+        });
+
+        it('should throw BadRequestException when payload is missing email', async () => {
+            const invalidPayload = {
+                sub: authId,
+                iss: 'test-issuer',
+            };
+            jwtService.extractPayloadFromToken.mockResolvedValue(invalidPayload);
+
+            await expect(service.getAuthByToken(validToken)).rejects.toThrow(BadRequestException);
+
+            expect(jwtService.extractPayloadFromToken).toHaveBeenCalledWith(validToken);
+        });
+
+        it('should handle error when getAuthById fails', async () => {
+            jwtService.extractPayloadFromToken.mockResolvedValue(mockPayload);
+            cachingAuthService.getCachedAuth.mockResolvedValue(null);
+            authRepository.findOneBy.mockRejectedValue(new Error('Database error'));
+
+            await expect(service.getAuthByToken(validToken)).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            expect(jwtService.extractPayloadFromToken).toHaveBeenCalledWith(validToken);
         });
     });
 });

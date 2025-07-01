@@ -1,12 +1,12 @@
 import * as cookieParser from 'cookie-parser';
 import { upperCase } from 'lodash';
+import * as morgan from 'morgan';
 
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Transport } from '@nestjs/microservices';
+import { MicroserviceOptions, RmqStatus, Transport } from '@nestjs/microservices';
 
 import { AppModule } from './app.module';
-import { rabbitMQConfig } from './configs/configuration.config';
 import { SwaggerConfiguration } from './configs/swagger.config';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 
@@ -28,20 +28,29 @@ async function bootstrap() {
         app.useGlobalFilters(new HttpExceptionFilter());
 
         app.use(cookieParser());
+        app.use(morgan('dev'));
 
         SwaggerConfiguration(app);
 
-        const microservice = app.connectMicroservice({
+        // Configure RabbitMQ microservice for receiving messages
+        app.connectMicroservice<MicroserviceOptions>({
             transport: Transport.RMQ,
-            options: rabbitMQConfig(),
+            options: {
+                urls: ['amqp://guest:guest@localhost:5672'],
+                queue: 'user_service_queue',
+                queueOptions: {
+                    durable: false,
+                },
+            },
         });
 
+        // Start all microservices first
+        await app.startAllMicroservices();
+        logger.log('Microservices started successfully');
+
+        // Then start the HTTP server
         await app.listen(process.env.SERVICE_PORT || 3000);
         logger.log(`User service is running on port: ${process.env.SERVICE_PORT || 3000}`);
-
-        // Start the microservice
-        await app.startAllMicroservices();
-        await microservice.listen();
     } catch (error) {
         logger.error('Error during bootstrap:', error);
         process.exit(1);

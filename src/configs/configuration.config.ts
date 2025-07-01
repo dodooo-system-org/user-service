@@ -38,6 +38,7 @@ export const databaseConfig = registerAs('database_env', (): DatabaseConfig => {
 });
 
 export interface JwtConfig {
+    claimIssuer: string; // Optional, used for JWT claims
     secret: string;
     jwtAccessTokenExpiresIn: string;
     jwtRefreshTokenExpiresIn: string;
@@ -46,6 +47,7 @@ export interface JwtConfig {
 export const jwtConfig = registerAs('jwt_env', (): JwtConfig => {
     const configService = new ConfigService();
     return {
+        claimIssuer: configService.get<string>('JWT_CLAIM_NAME', 'dodooo'), // Default to 'dodooo' if not set
         secret: getRequiredEnv<string>(configService, 'JWT_SECRET'),
         jwtAccessTokenExpiresIn: getRequiredEnv<string>(configService, 'JWT_ACCESS_TOKEN_EXPIRES_IN'),
         jwtRefreshTokenExpiresIn: getRequiredEnv<string>(configService, 'JWT_REFRESH_TOKEN_EXPIRES_IN'),

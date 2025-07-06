@@ -43,5 +43,9 @@ export const AUTH_MESSAGES = {
         USERNAME_INVALID: 'Username can only contain letters, numbers, and underscores',
         CONFIRM_PASSWORD_REQUIRED: 'Password confirmation is required',
         PASSWORDS_DONT_MATCH: 'Passwords do not match',
+        TOKEN_INVALID_TYPE: 'Token must be a string',
+        TOKEN_REQUIRED: 'Token is required',
+        REQUEST_ID_INVALID_TYPE: 'Request ID must be a UUID',
+        REQUEST_ID_REQUIRED: 'Request ID is required',
     },
 } as const;

@@ -6,6 +6,7 @@ import { SecretKeyConfig } from '@src/configs/configuration.config';
 import { AUTH_MESSAGES } from '@src/constants';
 import { EncryptionHelper } from '@src/helpers/encryption.helper';
 import { MailerAuthService } from '@src/modules/mailer/services';
+import { COMMON_RMQ } from '@src/rmq/rmq.module';
 import { isUUID } from 'class-validator';
 import { UUID } from 'crypto';
 import { DataSource } from 'typeorm';
@@ -14,12 +15,13 @@ import {
     BadRequestException,
     ForbiddenException,
     HttpException,
+    Inject,
     Injectable,
     Logger,
     NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
+import { ClientProxy, MessagePattern, RmqContext } from '@nestjs/microservices';
 
 import { UserService } from '../../user/user.service';
 import { AuthResponseDto, CreateAuthDto, JwtPayload, LoginBodyDto, LoginResponseDto } from '../dto';
@@ -40,6 +42,7 @@ export class AuthService {
         private readonly dataSource: DataSource,
         private readonly mailerAuthService: MailerAuthService,
         private readonly cachingAuthService: CachingAuthService,
+        @Inject(COMMON_RMQ) private readonly client: ClientProxy,
         private readonly configService: ConfigService,
     ) {
         this.secretKeyConfig = this.configService.get<SecretKeyConfig>('secretkey_env') as SecretKeyConfig;
@@ -308,12 +311,45 @@ export class AuthService {
             throw ErrorHelper.generateErrorService(error);
         }
     }
-    async validateTokenResponse(token: string, context: RmqContext): Promise<void> {
+    async validateTokenResponse(token: string, correlationId: string, replyTo: string): Promise<void> {
         try {
-            console.log({ token, context });
+            this.logger.log(`Validating token response - correlationId: ${correlationId}, replyTo: ${replyTo}`);
+            const auth = await this.getAuthByToken(token);
+
+            const response = { isValid: true, auth, correlationId };
+            this.logger.verbose(`Sending response to ${replyTo}:`, response);
+
+            this.client.send(replyTo, response);
         } catch (error) {
             this.logger.error('Error validating token response:', error);
+
+            const errorResponse = { isValid: false, auth: null, correlationId, error: error.message };
+            this.logger.verbose(`Sending error response to ${replyTo}:`, errorResponse);
+
+            this.client.send(replyTo, errorResponse);
             throw ErrorHelper.generateErrorService(error);
         }
     }
+
+    // async sendMessageToRabbitMQ() {
+    //     try {
+    //         const message = {
+    //             correlationId: '12345',
+    //             isValid: true,
+    //             auth: {
+    //                 authId: '123e4567-e89b-12d3-a456-426614174000',
+    //                 email: 'johndoe@email.com',
+    //                 username: 'johndoe',
+    //                 status: AuthStatus.ACTIVE,
+    //                 createdAt: new Date().toISOString(),
+    //                 updatedAt: new Date().toISOString(),
+    //                 role: 'user',
+    //             },
+    //         };
+    //         return this.client.send('course.test.test', message);
+    //     } catch (error) {
+    //         this.logger.error('Error sending message to RabbitMQ:', error);
+    //         throw ErrorHelper.generateErrorService(error);
+    //     }
+    // }
 }

@@ -1,5 +1,6 @@
 import { CachingModule } from '@src/caching/caching.module';
 import { AuthEntity, JWTEntity } from '@src/database/entities';
+import { RmqModule } from '@src/rmq/rmq.module';
 
 import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
@@ -21,6 +22,7 @@ import { RefreshJwtStrategy } from './strategies/refresh-jwt.strategy';
         PassportModule,
         CachingModule,
         MailerModule,
+        RmqModule,
     ],
     controllers: [AuthController],
     providers: [AuthService, JwtService, AuthRepository, JwtRepository, LocalStrategy, JwtStrategy, RefreshJwtStrategy],

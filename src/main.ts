@@ -3,10 +3,12 @@ import { upperCase } from 'lodash';
 import * as morgan from 'morgan';
 
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { MicroserviceOptions, RmqStatus, Transport } from '@nestjs/microservices';
+import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 
 import { AppModule } from './app.module';
+import { RabbitMQConfig } from './configs/configuration.config';
 import { SwaggerConfiguration } from './configs/swagger.config';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 
@@ -18,6 +20,25 @@ async function bootstrap() {
         const app = await NestFactory.create(AppModule, {
             bodyParser: true,
             rawBody: true,
+        });
+
+        const configService = new ConfigService();
+        const rabbitMQConfig = configService.get<RabbitMQConfig>('rabbitmq_env');
+
+        const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
+            transport: Transport.RMQ,
+            options: {
+                urls: rabbitMQConfig?.urls,
+                queue: rabbitMQConfig?.queue,
+                queueOptions: {
+                    durable: true,
+                },
+                exchange: 'amq.topic',
+                exchangeType: 'topic',
+                routingKey: 'user.*.*',
+                wildcards: true,
+                prefetchCount: 1,
+            },
         });
 
         app.useGlobalPipes(
@@ -32,22 +53,8 @@ async function bootstrap() {
 
         SwaggerConfiguration(app);
 
-        // Configure RabbitMQ microservice for receiving messages
-        app.connectMicroservice<MicroserviceOptions>({
-            transport: Transport.RMQ,
-            options: {
-                urls: ['amqp://guest:guest@localhost:5672'],
-                queue: 'user_service_queue',
-                queueOptions: {
-                    durable: false,
-                },
-            },
-        });
-
-        // Start all microservices first
-        await app.startAllMicroservices();
-        logger.log('Microservices started successfully');
-
+        // Start all microservices
+        await microservice.listen();
         // Then start the HTTP server
         await app.listen(process.env.SERVICE_PORT || 3000);
         logger.log(`User service is running on port: ${process.env.SERVICE_PORT || 3000}`);

@@ -1,8 +1,8 @@
 import { AUTH_TOKEN_NAME } from '@src/constants';
 import { Response } from 'express';
 
-import { Body, Controller, Delete, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { Ctx, EventPattern, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
+import { Body, Controller, Delete, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CreateAuthDto, LoginBodyDto, RequestJwtDto, RequestRefreshJwtDto } from './dto';
@@ -115,16 +115,12 @@ export class AuthController {
         return this.authService.resendEmailVerification(token);
     }
 
-    // @MessagePattern('user.auth.validate-token')
-    // async validateTokenRequest(@Payload() data: ValidateTokenDto, @Ctx() context: RmqContext) {
-    //     const { correlationId, replyTo } = context.getArgs()[0].properties;
-    //     console.log(data);
-    //     // await this.authService.validateTokenResponse(data.token, correlationId, replyTo);
-    //     // console.dir(context.getArgs()[0]);
-    // }
-
-    // @Get('test-rabbitmq-communication')
-    // async testRabbitMQCommunication() {
-    //     return this.authService.sendMessageToRabbitMQ();
-    // }
+    @MessagePattern('user.auth.token-validation-request')
+    async validateTokenRequest(@Payload() data: ValidateTokenDto, @Ctx() context: RmqContext) {
+        const { correlationId, replyTo } = context.getArgs()[0].properties as {
+            correlationId?: string;
+            replyTo?: string;
+        };
+        await this.authService.validateTokenResponse(data.token, correlationId || '', replyTo || '');
+    }
 }

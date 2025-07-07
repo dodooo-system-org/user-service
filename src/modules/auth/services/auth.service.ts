@@ -21,10 +21,11 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ClientProxy, MessagePattern, RmqContext } from '@nestjs/microservices';
+import { ClientProxy } from '@nestjs/microservices';
 
 import { UserService } from '../../user/user.service';
 import { AuthResponseDto, CreateAuthDto, JwtPayload, LoginBodyDto, LoginResponseDto } from '../dto';
+import { ValidateTokenResponseDto } from '../dto/validate-token.dto';
 import { authEntityToDtoMapper } from '../mappers';
 import { AuthRepository } from '../repositories';
 import { JwtService } from './jwt.service';
@@ -313,43 +314,23 @@ export class AuthService {
     }
     async validateTokenResponse(token: string, correlationId: string, replyTo: string): Promise<void> {
         try {
-            this.logger.log(`Validating token response - correlationId: ${correlationId}, replyTo: ${replyTo}`);
             const auth = await this.getAuthByToken(token);
 
-            const response = { isValid: true, auth, correlationId };
-            this.logger.verbose(`Sending response to ${replyTo}:`, response);
+            const response: ValidateTokenResponseDto = { isValid: true, auth, correlationId };
 
-            this.client.send(replyTo, response);
+            await this.client.send(replyTo, response).toPromise();
         } catch (error) {
             this.logger.error('Error validating token response:', error);
 
-            const errorResponse = { isValid: false, auth: null, correlationId, error: error.message };
-            this.logger.verbose(`Sending error response to ${replyTo}:`, errorResponse);
+            const errorResponse = {
+                isValid: false,
+                auth: null,
+                correlationId,
+                error: (error.message as string) || 'An unexpected error occurred',
+            };
 
-            this.client.send(replyTo, errorResponse);
+            await this.client.send(replyTo, errorResponse).toPromise();
             throw ErrorHelper.generateErrorService(error);
         }
     }
-
-    // async sendMessageToRabbitMQ() {
-    //     try {
-    //         const message = {
-    //             correlationId: '12345',
-    //             isValid: true,
-    //             auth: {
-    //                 authId: '123e4567-e89b-12d3-a456-426614174000',
-    //                 email: 'johndoe@email.com',
-    //                 username: 'johndoe',
-    //                 status: AuthStatus.ACTIVE,
-    //                 createdAt: new Date().toISOString(),
-    //                 updatedAt: new Date().toISOString(),
-    //                 role: 'user',
-    //             },
-    //         };
-    //         return this.client.send('course.test.test', message);
-    //     } catch (error) {
-    //         this.logger.error('Error sending message to RabbitMQ:', error);
-    //         throw ErrorHelper.generateErrorService(error);
-    //     }
-    // }
 }

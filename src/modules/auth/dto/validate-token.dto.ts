@@ -1,4 +1,5 @@
 import { AUTH_MESSAGES } from '@src/constants';
+import { AuthEntity } from '@src/database/entities';
 import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class ValidateTokenDto {
@@ -12,4 +13,14 @@ export class ValidateTokenDto {
 
     @IsOptional()
     readonly timestamp?: number;
+}
+
+export class ValidateTokenResponseDto {
+    readonly auth?: Partial<AuthEntity>;
+
+    readonly correlationId: string;
+
+    readonly isValid?: boolean;
+
+    readonly error?: string;
 }

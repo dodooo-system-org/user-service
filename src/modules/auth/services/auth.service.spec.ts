@@ -4,6 +4,7 @@ import { AuthEntity, AuthStatus, UserRole } from '@src/database/entities';
 import { AuthHelper } from '@src/helpers/auth.helper';
 import { EncryptionHelper } from '@src/helpers/encryption.helper';
 import { MailerAuthService } from '@src/modules/mailer/services';
+import { COMMON_RMQ } from '@src/rmq/rmq.module';
 import { UUID } from 'crypto';
 import { DataSource } from 'typeorm';
 
@@ -25,6 +26,7 @@ describe('AuthService', () => {
     let mailerAuthService: any;
     let secretKeyConfig: any;
     let cachingAuthService: any;
+    let clientProxy: any;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -100,6 +102,12 @@ describe('AuthService', () => {
                         cacheAuth: jest.fn(),
                     },
                 },
+                {
+                    provide: COMMON_RMQ,
+                    useValue: {
+                        send: jest.fn().mockReturnValue({ toPromise: jest.fn() }),
+                    },
+                },
             ],
         }).compile();
 
@@ -111,6 +119,7 @@ describe('AuthService', () => {
         mailerAuthService = module.get<MailerAuthService>(MailerAuthService);
         secretKeyConfig = module.get<ConfigService>(ConfigService).get('secretkey_env') as SecretKeyConfig;
         cachingAuthService = module.get<CachingAuthService>(CachingAuthService);
+        clientProxy = module.get(COMMON_RMQ);
 
         jest.clearAllMocks();
     });
@@ -1069,6 +1078,216 @@ describe('AuthService', () => {
             });
 
             expect(jwtService.extractPayloadFromToken).toHaveBeenCalledWith(validToken);
+        });
+    });
+
+    describe('validateTokenResponse', () => {
+        const mockToken = 'valid-token';
+        const mockCorrelationId = 'test-correlation-id';
+        const mockReplyTo = 'test-reply-to';
+        const mockAuthResponse = {
+            authId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
+            email: 'test@example.com',
+            username: 'testuser',
+            status: AuthStatus.ACTIVE,
+            role: UserRole.USER,
+        };
+
+        beforeEach(() => {
+            clientProxy.send.mockReturnValue({
+                toPromise: jest.fn().mockResolvedValue(undefined),
+            });
+        });
+
+        it('should successfully validate token and send success response', async () => {
+            // Arrange
+            jest.spyOn(service, 'getAuthByToken').mockResolvedValue(mockAuthResponse);
+            const expectedResponse = {
+                isValid: true,
+                auth: mockAuthResponse,
+                correlationId: mockCorrelationId,
+            };
+
+            // Act
+            await service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo);
+
+            // Assert
+            expect(service.getAuthByToken).toHaveBeenCalledWith(mockToken);
+            expect(clientProxy.send).toHaveBeenCalledWith(mockReplyTo, expectedResponse);
+            expect(clientProxy.send().toPromise).toHaveBeenCalled();
+        });
+
+        it('should send error response when token validation fails', async () => {
+            // Arrange
+            const mockError = new Error('Token validation failed');
+            jest.spyOn(service, 'getAuthByToken').mockRejectedValue(mockError);
+            const expectedErrorResponse = {
+                isValid: false,
+                auth: null,
+                correlationId: mockCorrelationId,
+                error: mockError.message,
+            };
+
+            // Act & Assert
+            await expect(
+                service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo),
+            ).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            expect(service.getAuthByToken).toHaveBeenCalledWith(mockToken);
+            expect(clientProxy.send).toHaveBeenCalledWith(mockReplyTo, expectedErrorResponse);
+            expect(clientProxy.send().toPromise).toHaveBeenCalled();
+        });
+
+        it('should handle BadRequestException and send appropriate error response', async () => {
+            // Arrange
+            const badRequestError = new BadRequestException('Invalid token format');
+            jest.spyOn(service, 'getAuthByToken').mockRejectedValue(badRequestError);
+            const expectedErrorResponse = {
+                isValid: false,
+                auth: null,
+                correlationId: mockCorrelationId,
+                error: badRequestError.message,
+            };
+
+            // Act & Assert
+            await expect(
+                service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo),
+            ).rejects.toMatchObject({
+                message: 'Invalid token format',
+            });
+
+            expect(service.getAuthByToken).toHaveBeenCalledWith(mockToken);
+            expect(clientProxy.send).toHaveBeenCalledWith(mockReplyTo, expectedErrorResponse);
+        });
+
+        it('should handle client proxy send failure', async () => {
+            // Arrange
+            jest.spyOn(service, 'getAuthByToken').mockResolvedValue(mockAuthResponse);
+            const clientError = new Error('Client proxy send failed');
+            clientProxy.send.mockReturnValue({
+                toPromise: jest.fn().mockRejectedValue(clientError),
+            });
+
+            // Act & Assert
+            await expect(service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo)).rejects.toThrow(
+                clientError,
+            );
+
+            expect(service.getAuthByToken).toHaveBeenCalledWith(mockToken);
+            expect(clientProxy.send).toHaveBeenCalledWith(mockReplyTo, {
+                isValid: true,
+                auth: mockAuthResponse,
+                correlationId: mockCorrelationId,
+            });
+        });
+
+        it('should handle null auth response', async () => {
+            // Arrange
+            jest.spyOn(service, 'getAuthByToken').mockResolvedValue({} as any);
+            const expectedResponse = {
+                isValid: true,
+                auth: {},
+                correlationId: mockCorrelationId,
+            };
+
+            // Act
+            await service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo);
+
+            // Assert
+            expect(service.getAuthByToken).toHaveBeenCalledWith(mockToken);
+            expect(clientProxy.send).toHaveBeenCalledWith(mockReplyTo, expectedResponse);
+        });
+
+        it('should handle partial auth response', async () => {
+            // Arrange
+            const partialAuthResponse = {
+                email: 'test@example.com',
+                username: 'testuser',
+            };
+            jest.spyOn(service, 'getAuthByToken').mockResolvedValue(partialAuthResponse);
+            const expectedResponse = {
+                isValid: true,
+                auth: partialAuthResponse,
+                correlationId: mockCorrelationId,
+            };
+
+            // Act
+            await service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo);
+
+            // Assert
+            expect(service.getAuthByToken).toHaveBeenCalledWith(mockToken);
+            expect(clientProxy.send).toHaveBeenCalledWith(mockReplyTo, expectedResponse);
+        });
+
+        it('should handle empty token string', async () => {
+            // Arrange
+            const emptyToken = '';
+            const mockError = new Error('Empty token provided');
+            jest.spyOn(service, 'getAuthByToken').mockRejectedValue(mockError);
+            const expectedErrorResponse = {
+                isValid: false,
+                auth: null,
+                correlationId: mockCorrelationId,
+                error: mockError.message,
+            };
+
+            // Act & Assert
+            await expect(
+                service.validateTokenResponse(emptyToken, mockCorrelationId, mockReplyTo),
+            ).rejects.toMatchObject({
+                message: 'An unexpected error occurred',
+            });
+
+            expect(service.getAuthByToken).toHaveBeenCalledWith(emptyToken);
+            expect(clientProxy.send).toHaveBeenCalledWith(mockReplyTo, expectedErrorResponse);
+        });
+
+        it('should preserve correlation ID in both success and error responses', async () => {
+            // Test success case
+            jest.spyOn(service, 'getAuthByToken').mockResolvedValue(mockAuthResponse);
+
+            await service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo);
+
+            expect(clientProxy.send).toHaveBeenCalledWith(
+                mockReplyTo,
+                expect.objectContaining({
+                    correlationId: mockCorrelationId,
+                }),
+            );
+
+            // Reset mocks
+            jest.clearAllMocks();
+            clientProxy.send.mockReturnValue({
+                toPromise: jest.fn().mockResolvedValue(undefined),
+            });
+
+            // Test error case
+            const mockError = new Error('Test error');
+            jest.spyOn(service, 'getAuthByToken').mockRejectedValue(mockError);
+
+            await expect(service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo)).rejects.toThrow();
+
+            expect(clientProxy.send).toHaveBeenCalledWith(
+                mockReplyTo,
+                expect.objectContaining({
+                    correlationId: mockCorrelationId,
+                }),
+            );
+        });
+
+        it('should log errors properly', async () => {
+            // Arrange
+            const mockError = new Error('Test error for logging');
+            jest.spyOn(service, 'getAuthByToken').mockRejectedValue(mockError);
+            const loggerErrorSpy = jest.spyOn(service['logger'], 'error');
+
+            // Act
+            await expect(service.validateTokenResponse(mockToken, mockCorrelationId, mockReplyTo)).rejects.toThrow();
+
+            // Assert
+            expect(loggerErrorSpy).toHaveBeenCalledWith('Error validating token response:', mockError);
         });
     });
 });

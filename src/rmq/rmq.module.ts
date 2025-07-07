@@ -23,12 +23,13 @@ export const COMMON_RMQ = 'COMMON_RMQ';
                             wildcards: true,
                             serializer: {
                                 serialize: (value: any) => {
-                                    return Buffer.from(JSON.stringify(value.data), 'utf-8');
+                                    return Buffer.from(JSON.stringify(value?.data), 'utf-8');
                                 },
                             },
                         },
                     };
                 },
+                inject: [ConfigService],
             },
         ]),
     ],

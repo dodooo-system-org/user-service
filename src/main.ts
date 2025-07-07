@@ -3,12 +3,11 @@ import { upperCase } from 'lodash';
 import * as morgan from 'morgan';
 
 import { Logger, ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 
 import { AppModule } from './app.module';
-import { RabbitMQConfig } from './configs/configuration.config';
+import { rabbitMQConfig } from './configs/configuration.config';
 import { SwaggerConfiguration } from './configs/swagger.config';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 
@@ -22,20 +21,16 @@ async function bootstrap() {
             rawBody: true,
         });
 
-        const configService = new ConfigService();
-        const rabbitMQConfig = configService.get<RabbitMQConfig>('rabbitmq_env');
-
         const microservice = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
             transport: Transport.RMQ,
             options: {
-                urls: rabbitMQConfig?.urls,
-                queue: rabbitMQConfig?.queue,
+                urls: rabbitMQConfig()?.urls,
+                queue: rabbitMQConfig()?.queue,
                 queueOptions: {
                     durable: true,
                 },
                 exchange: 'amq.topic',
                 exchangeType: 'topic',
-                routingKey: 'user.*.*',
                 wildcards: true,
                 prefetchCount: 1,
             },
